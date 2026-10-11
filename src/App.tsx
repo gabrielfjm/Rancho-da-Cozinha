@@ -42,7 +42,7 @@ export default function App() {
     if (nextScope === 'guest' || !configured) return
     setSyncLabel('Sincronizando…')
     try { await sync(nextScope); await refresh(nextScope); setSyncLabel('Em dia') }
-    catch { setSyncLabel('Pendente') }
+    catch (error) { console.error('Falha ao sincronizar o caderno', error); setSyncLabel('Pendente') }
   }
   useEffect(() => {
     let alive = true
