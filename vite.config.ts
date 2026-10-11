@@ -8,7 +8,7 @@ export default defineConfig({
     registerType: 'autoUpdate',
     includeAssets: ['favicon-32.png', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png'],
     manifest: {
-      name: 'Rancho da Cozinha', short_name: 'Rancho', description: 'Seu caderno de receitas da casa',
+      name: 'Rancho da Cozinha', short_name: 'Rancho', description: 'Seu caderno de receitas da casa', lang: 'pt-BR',
       theme_color: '#35150B', background_color: '#F3EAD8', display: 'standalone',
       icons: [
         { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
