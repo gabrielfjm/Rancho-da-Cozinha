@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Fuse from 'fuse.js'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Archive, BookOpen, Cloud, Download, Home, LogIn, LogOut, Menu, Moon, Plus, Search, ShoppingBasket, Sun, Upload, UtensilsCrossed, Wifi, WifiOff, X } from 'lucide-react'
+import { Archive, BookOpen, Cloud, Download, Home, LockKeyhole, LogOut, Menu, Moon, Plus, Search, ShieldCheck, ShoppingBasket, Sun, Upload, UserRound, UtensilsCrossed, Wifi, WifiOff, X } from 'lucide-react'
 import type { Session } from '@supabase/supabase-js'
 import ingredientsJson from './data/ingredients.json'
 import type { Collection, CookLog, IngredientBase, LocalState, Recipe, ShoppingItem } from './types'
@@ -16,6 +16,7 @@ import { Ornament, RanchMark, Skillet } from './components/Artwork'
 type Page = 'home' | 'notebook' | 'pantry' | 'shopping' | 'settings' | 'auth' | 'form' | 'recipe' | 'kitchen'
 const emptyState: LocalState = { recipes: [], customIngredients: [], collections: [], shopping: [], cookLogs: [] }
 const catalog = ingredientsJson as unknown as IngredientBase[]
+const ADMIN_EMAIL = (import.meta.env.VITE_ADMIN_EMAIL || 'gabrielfjmeira@gmail.com').toLowerCase()
 
 function blankRecipe(): Recipe {
   const now = new Date().toISOString()
@@ -24,6 +25,7 @@ function blankRecipe(): Recipe {
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null)
+  const [authReady, setAuthReady] = useState(false)
   const [scope, setScope] = useState('guest')
   const [state, setState] = useState<LocalState>(emptyState)
   const [page, setPage] = useState<Page>('home')
@@ -36,17 +38,14 @@ export default function App() {
   const [toast, setToast] = useState('')
   const ingredients = useMemo(() => [...catalog, ...state.customIngredients], [state.customIngredients])
   const selected = state.recipes.find(recipe => recipe.id === selectedId)
+  const isAdmin = session?.user.email?.toLowerCase() === ADMIN_EMAIL
 
   async function refresh(nextScope = scope) { setState(await loadState(nextScope)) }
   async function runSync(nextScope = scope) {
     if (nextScope === 'guest' || !configured) return
     setSyncLabel('Sincronizando…')
     try { await sync(nextScope); await refresh(nextScope); setSyncLabel('Em dia') }
-    catch (error) {
-      const detail = error instanceof Error ? error.message : JSON.stringify(error)
-      console.error('Falha ao sincronizar o caderno', detail)
-      setSyncLabel(`Pendente: ${detail.slice(0, 120)}`)
-    }
+    catch (error) { console.error('Falha ao sincronizar o caderno', error); setSyncLabel('Pendente') }
   }
   useEffect(() => {
     let alive = true
@@ -59,16 +58,17 @@ export default function App() {
       await refresh(nextScope)
       if (current) await runSync(nextScope)
       const sharedId = new URLSearchParams(location.search).get('share')
-      if (sharedId && supabase) {
+      if (current && sharedId && supabase) {
         const { data } = await supabase.from('recipes').select('payload').eq('id', sharedId).eq('shared', true).is('deleted_at', null).maybeSingle()
         if (data?.payload) { const shared = data.payload as Recipe; setState(s => ({ ...s, recipes: [shared, ...s.recipes.filter(r => r.id !== shared.id)] })); setSelectedId(shared.id); setPage('recipe') }
       }
+      if (alive) setAuthReady(true)
     }
     void boot()
     const auth = supabase?.auth.onAuthStateChange(async (_event, next) => {
       setSession(next); const nextScope = next?.user.id ?? 'guest'; setScope(nextScope)
       if (next) await seedAccount(nextScope)
-      await refresh(nextScope); if (next) void runSync(nextScope)
+      await refresh(nextScope); if (next) void runSync(nextScope); setAuthReady(true)
     })
     const onlineHandler = () => { setOnline(navigator.onLine); if (navigator.onLine) void runSync() }
     addEventListener('online', onlineHandler); addEventListener('offline', onlineHandler)
@@ -76,6 +76,7 @@ export default function App() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { document.documentElement.dataset.theme = dark ? 'dark' : 'light'; localStorage.setItem('rancho-theme', dark ? 'dark' : 'light') }, [dark])
   useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(''), 2600); return () => clearTimeout(timer) }, [toast])
+  useEffect(() => { if (!isAdmin && page === 'settings') setPage('home') }, [isAdmin, page])
 
   async function persistRecipe(recipe: Recipe, quiet = false) {
     const withOwner = { ...recipe, ownerId: scope }
@@ -116,41 +117,45 @@ export default function App() {
     for (const item of next) await saveEntity(scope, 'shopping_items', item)
     setState(current => ({ ...current, shopping: next })); setToast('Ingredientes somados à lista.')
   }
-  function navigate(next: Page) { setPage(next); setMenu(false); scrollTo({ top: 0, behavior: 'smooth' }) }
+  function navigate(next: Page) { setPage(next === 'settings' && !isAdmin ? 'home' : next); setMenu(false); scrollTo({ top: 0, behavior: 'smooth' }) }
   function openRecipe(recipe: Recipe) { setSelectedId(recipe.id); navigate('recipe') }
 
+  if (!authReady) return <LoadingScreen/>
+  if (!session) return <Auth session={null} onDone={() => setPage('home')}/>
+
   return <div className="app-shell">
-    <Header page={page} navigate={navigate} menu={menu} setMenu={setMenu} dark={dark} setDark={setDark} session={session} online={online} syncLabel={syncLabel}/>
+    <Header page={page} navigate={navigate} menu={menu} setMenu={setMenu} dark={dark} setDark={setDark} session={session} online={online} syncLabel={syncLabel} isAdmin={isAdmin}/>
     <AnimatePresence mode="wait">
       <motion.div key={`${page}-${selectedId ?? ''}`} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: .2 }}>
-        {page === 'home' && <HomePage recipes={state.recipes} openRecipe={openRecipe} newRecipe={() => { setEditing(blankRecipe()); navigate('form') }} navigate={navigate}/>} 
-        {page === 'notebook' && <Notebook recipes={state.recipes} collections={state.collections} onSaveCollection={collection => void saveCollection(collection)} openRecipe={openRecipe} newRecipe={() => { setEditing(blankRecipe()); navigate('form') }}/>} 
-        {page === 'pantry' && <Pantry recipes={state.recipes} ingredients={ingredients} openRecipe={openRecipe}/>} 
-        {page === 'shopping' && <Shopping items={state.shopping} scope={scope} onChange={async next => { setState(s => ({ ...s, shopping: next })); for (const item of next) await saveEntity(scope, 'shopping_items', item) }}/>} 
-        {page === 'settings' && <Settings state={state} scope={scope} onImport={async imported => { for (const recipe of imported.recipes ?? []) await saveEntity(scope, 'recipes', { ...recipe, ownerId: scope }); for (const item of imported.customIngredients ?? []) await saveEntity(scope, 'personal_ingredients', { ...item, ownerId: scope }); for (const item of imported.shopping ?? []) await saveEntity(scope, 'shopping_items', { ...item, ownerId: scope }); await refresh(); setToast('Backup importado.') }} configured={configured}/>} 
-        {page === 'auth' && <Auth session={session} onDone={() => navigate('home')}/>} 
-        {page === 'form' && editing && <RecipeForm recipe={editing} ingredients={ingredients} scope={scope} onDraft={recipe => void persistRecipe(recipe, true)} onSave={recipe => void persistRecipe(recipe)} onCancel={() => navigate(editing.title ? 'recipe' : 'notebook')} onIngredientCreate={item => void addPersonal(item)}/>} 
-        {page === 'recipe' && selected && <RecipeView recipe={selected} logs={state.cookLogs.filter(log => log.recipeId === selected.id)} onBack={() => navigate('notebook')} onEdit={() => { setEditing(selected); navigate('form') }} onDelete={() => void removeRecipe(selected)} onFavorite={() => void persistRecipe({ ...selected, favorite: !selected.favorite }, true)} onShare={() => void persistRecipe({ ...selected, shared: true }, true)} onKitchen={() => navigate('kitchen')} onShopping={() => void toShopping(selected)} onLog={log => void addLog(log)}/>} 
-        {page === 'recipe' && !selected && <EmptyNotebook newRecipe={() => { setEditing(blankRecipe()); navigate('form') }}/>} 
-        {page === 'kitchen' && selected && <Kitchen recipe={selected} onClose={() => navigate('recipe')}/>} 
+        {page === 'home' && <HomePage recipes={state.recipes} openRecipe={openRecipe} newRecipe={() => { setEditing(blankRecipe()); navigate('form') }} navigate={navigate}/>}
+        {page === 'notebook' && <Notebook recipes={state.recipes} collections={state.collections} onSaveCollection={collection => void saveCollection(collection)} openRecipe={openRecipe} newRecipe={() => { setEditing(blankRecipe()); navigate('form') }}/>}
+        {page === 'pantry' && <Pantry recipes={state.recipes} ingredients={ingredients} openRecipe={openRecipe}/>}
+        {page === 'shopping' && <Shopping items={state.shopping} scope={scope} onChange={async next => { setState(s => ({ ...s, shopping: next })); for (const item of next) await saveEntity(scope, 'shopping_items', item) }}/>}
+        {page === 'settings' && isAdmin && <Settings state={state} scope={scope} onImport={async imported => { for (const recipe of imported.recipes ?? []) await saveEntity(scope, 'recipes', { ...recipe, ownerId: scope }); for (const item of imported.customIngredients ?? []) await saveEntity(scope, 'personal_ingredients', { ...item, ownerId: scope }); for (const item of imported.shopping ?? []) await saveEntity(scope, 'shopping_items', { ...item, ownerId: scope }); await refresh(); setToast('Backup importado.') }} configured={configured}/>}
+        {page === 'auth' && <Auth session={session} onDone={() => navigate('home')}/>}
+        {page === 'form' && editing && <RecipeForm recipe={editing} ingredients={ingredients} scope={scope} onDraft={recipe => void persistRecipe(recipe, true)} onSave={recipe => void persistRecipe(recipe)} onCancel={() => navigate(editing.title ? 'recipe' : 'notebook')} onIngredientCreate={item => void addPersonal(item)}/>}
+        {page === 'recipe' && selected && <RecipeView recipe={selected} logs={state.cookLogs.filter(log => log.recipeId === selected.id)} onBack={() => navigate('notebook')} onEdit={() => { setEditing(selected); navigate('form') }} onDelete={() => void removeRecipe(selected)} onFavorite={() => void persistRecipe({ ...selected, favorite: !selected.favorite }, true)} onShare={() => void persistRecipe({ ...selected, shared: true }, true)} onKitchen={() => navigate('kitchen')} onShopping={() => void toShopping(selected)} onLog={log => void addLog(log)}/>}
+        {page === 'recipe' && !selected && <EmptyNotebook newRecipe={() => { setEditing(blankRecipe()); navigate('form') }}/>}
+        {page === 'kitchen' && selected && <Kitchen recipe={selected} onClose={() => navigate('recipe')}/>}
       </motion.div>
     </AnimatePresence>
+    <Footer/>
     {toast && <div className="toast" role="status">{toast}</div>}
   </div>
 }
 
-function Header({ page, navigate, menu, setMenu, dark, setDark, session, online, syncLabel }: { page: Page; navigate: (p: Page) => void; menu: boolean; setMenu: (v: boolean) => void; dark: boolean; setDark: (v: boolean) => void; session: Session | null; online: boolean; syncLabel: string }) {
+function Header({ page, navigate, menu, setMenu, dark, setDark, session, online, syncLabel, isAdmin }: { page: Page; navigate: (p: Page) => void; menu: boolean; setMenu: (v: boolean) => void; dark: boolean; setDark: (v: boolean) => void; session: Session; online: boolean; syncLabel: string; isAdmin: boolean }) {
   const nav: [Page, string, React.ReactNode][] = [['home','Início',<Home size={18}/>],['notebook','Caderno',<BookOpen size={18}/>],['pantry','Despensa',<UtensilsCrossed size={18}/>],['shopping','Compras',<ShoppingBasket size={18}/>]]
-  return <><div className="gingham-bar"/><header className="site-header"><button className="brand" onClick={() => navigate('home')}><RanchMark/><span><strong>Rancho da Cozinha</strong><small>receitas da casa desde sempre</small></span></button><nav className={menu ? 'open' : ''}>{nav.map(([target,label,icon]) => <button key={target} className={page === target ? 'active' : ''} onClick={() => navigate(target)}>{icon}{label}</button>)}<button onClick={() => navigate('settings')}><Archive size={18}/>Ajustes</button></nav><div className="header-tools"><span className="sync-state" title={online ? syncLabel : 'Sem internet'}>{online ? <Wifi size={15}/> : <WifiOff size={15}/>}<span>{session ? syncLabel : 'Neste aparelho'}</span></span><button className="icon-button" onClick={() => setDark(!dark)} aria-label={dark ? 'Usar modo claro' : 'Usar Noite no Rancho'}>{dark ? <Sun size={19}/> : <Moon size={19}/>}</button><button className="account-button" onClick={() => navigate('auth')}>{session ? <><span className="avatar">{session.user.email?.[0].toUpperCase()}</span><span>Minha conta</span></> : <><LogIn size={17}/><span>Entrar</span></>}</button><button className="menu-button" onClick={() => setMenu(!menu)} aria-label="Abrir menu">{menu ? <X/> : <Menu/>}</button></div></header></>
+  return <><div className="gingham-bar"/><header className="site-header"><button className="brand" onClick={() => navigate('home')}><RanchMark size={54}/><span><strong>Rancho da Cozinha</strong><small>receitas da casa desde sempre</small></span></button><nav className={menu ? 'open' : ''}>{nav.map(([target,label,icon]) => <button key={target} className={page === target ? 'active' : ''} onClick={() => navigate(target)}>{icon}{label}</button>)}{isAdmin && <button className={page === 'settings' ? 'active' : ''} onClick={() => navigate('settings')}><Archive size={18}/>Ajustes</button>}</nav><div className="header-tools"><span className="sync-state" title={online ? syncLabel : 'Sem internet'}>{online ? <Wifi size={15}/> : <WifiOff size={15}/>}<span>{syncLabel}</span></span><button className="icon-button" onClick={() => setDark(!dark)} aria-label={dark ? 'Usar modo claro' : 'Usar Noite no Rancho'}>{dark ? <Sun size={19}/> : <Moon size={19}/>}</button><button className="account-button" onClick={() => navigate('auth')}><span className="avatar">{session.user.email?.[0].toUpperCase()}</span><span><b>Meu perfil</b><small>{isAdmin ? 'Administrador' : 'Cozinheiro da casa'}</small></span></button><button className="menu-button" onClick={() => setMenu(!menu)} aria-label="Abrir menu">{menu ? <X/> : <Menu/>}</button></div></header></>
 }
 
 function HomePage({ recipes, openRecipe, newRecipe, navigate }: { recipes: Recipe[]; openRecipe: (r: Recipe) => void; newRecipe: () => void; navigate: (p: Page) => void }) {
   const today = recipes.length ? recipes[new Date().getDate() % recipes.length] : undefined
   const recent = [...recipes].sort((a,b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 4)
-  return <main className="page home-page"><section className="home-hero"><div className="hero-copy"><span className="eyebrow">O fogo está aceso</span><h1>Bom ter você<br/>de volta à cozinha.</h1><p>Suas receitas, histórias e pequenos segredos da casa, todos no mesmo caderno.</p><div className="hero-actions"><button className="button" onClick={newRecipe}><Plus size={18}/> Nova receita</button><button className="button button-paper" onClick={() => navigate('pantry')}>O que faço com o que tenho?</button></div></div><div className="hero-scene"><div className="sunset"/><div className="barn"><span/><i/></div><div className="fence"/><div className="hero-stamp">Cozinhe<br/><strong>com calma</strong></div></div></section><Ornament/>
+  return <main className="page home-page"><section className="home-hero"><img className="hero-background" src="/assets/home-ranch-kitchen.jpg" alt="Cozinha de rancho com caderno de receitas ao pôr do sol"/><div className="hero-copy"><span className="eyebrow">O fogo está aceso</span><h1>Bom ter você<br/>de volta à cozinha.</h1><p>Suas receitas, histórias e pequenos segredos da casa, guardados com o cuidado de um verdadeiro caderno de família.</p><div className="hero-actions"><button className="button" onClick={newRecipe}><Plus size={18}/> Nova receita</button><button className="button button-paper" onClick={() => navigate('pantry')}>O que faço com o que tenho?</button></div></div><div className="hero-stamp">Feito no rancho<br/><strong>com calma</strong></div></section><Ornament/>
     {today && <section className="daily"><div className="section-intro"><span className="eyebrow">Escolha do dia</span><h2>Receita para hoje</h2></div><button className="daily-card" onClick={() => openRecipe(today)}><div><span>{today.category}</span><h3>{today.title}</h3><p>{today.description}</p><small>{today.prepMinutes + today.cookMinutes} minutos · rende {today.servings}</small></div><Skillet size={110}/><b>ABRIR FICHA →</b></button></section>}
     <section className="home-section"><div className="section-row"><div><span className="eyebrow">Páginas recentes</span><h2>Do seu caderno</h2></div><button className="text-button" onClick={() => navigate('notebook')}>Ver todas →</button></div>{recent.length ? <div className="card-grid">{recent.map((r,i) => <RecipeCard key={r.id} recipe={r} index={i} onOpen={() => openRecipe(r)}/>)}</div> : <EmptyNotebook newRecipe={newRecipe}/>}</section>
-    <section className="quick-notes"><button onClick={() => navigate('pantry')}><UtensilsCrossed/><span><strong>Despensa do dia</strong><small>Descubra receitas com o que já tem</small></span></button><button onClick={() => navigate('shopping')}><ShoppingBasket/><span><strong>Lista do mercado</strong><small>Itens organizados por corredor</small></span></button><button onClick={() => navigate('settings')}><Download/><span><strong>Guardar uma cópia</strong><small>Exporte seu caderno completo</small></span></button></section>
+    <section className="quick-notes"><button onClick={() => navigate('pantry')}><UtensilsCrossed/><span><strong>Despensa do dia</strong><small>Descubra receitas com o que já tem</small></span></button><button onClick={() => navigate('shopping')}><ShoppingBasket/><span><strong>Lista do mercado</strong><small>Itens organizados por corredor</small></span></button><button onClick={() => navigate('auth')}><UserRound/><span><strong>Meu perfil</strong><small>Conta, acesso e sincronização</small></span></button></section>
   </main>
 }
 
@@ -191,9 +196,13 @@ function Auth({ session, onDone }: { session: Session | null; onDone: () => void
   const [email,setEmail]=useState(''); const [password,setPassword]=useState(''); const [mode,setMode]=useState<'login'|'signup'>('login'); const [message,setMessage]=useState('')
   async function submit(event: React.FormEvent) { event.preventDefault(); if(!supabase){setMessage('Configure o Supabase no arquivo .env para entrar.');return} const result=mode==='login'?await supabase.auth.signInWithPassword({email,password}):await supabase.auth.signUp({email,password}); setMessage(result.error?.message ?? (mode==='signup'&&!result.data.session?'Confira seu e-mail para confirmar a conta.':'Conta conectada.')); if(result.data.session) onDone() }
   async function google(){ if(!supabase){setMessage('Configure o Supabase no arquivo .env para entrar.');return} await supabase.auth.signInWithOAuth({provider:'google',options:{redirectTo:location.origin}}) }
-  if(session) return <main className="page auth-page"><div className="auth-card"><RanchMark size={70}/><span className="eyebrow">Conta da casa</span><h1>Você está no rancho.</h1><p>{session.user.email}</p><button className="button" onClick={async()=>{await supabase?.auth.signOut();onDone()}}><LogOut size={18}/> Sair da conta</button></div></main>
-  return <main className="page auth-page"><form className="auth-card" onSubmit={e=>void submit(e)}><RanchMark size={70}/><span className="eyebrow">Caderno sincronizado</span><h1>{mode==='login'?'Entrar na cozinha':'Abrir sua conta'}</h1><p>Use a mesma conta no computador e no celular.</p><label>E-mail<input type="email" required value={email} onChange={e=>setEmail(e.target.value)}/></label><label>Senha<input type="password" required minLength={6} value={password} onChange={e=>setPassword(e.target.value)}/></label><button className="button" type="submit">{mode==='login'?'Entrar':'Criar conta'}</button><button className="button button-outline" type="button" onClick={()=>void google()}>Continuar com Google</button><button className="text-button" type="button" onClick={()=>setMode(mode==='login'?'signup':'login')}>{mode==='login'?'Ainda não tenho conta':'Já tenho uma conta'}</button>{message&&<p role="status" className="auth-message">{message}</p>}</form></main>
+  if(session) return <main className="page profile-page"><section className="profile-card"><div className="profile-emblem"><RanchMark size={150}/></div><div className="profile-copy"><span className="eyebrow">Conta da casa</span><h1>Seu lugar à mesa.</h1><p>Suas fichas ficam ligadas a esta conta e acompanham você entre os aparelhos.</p><div className="profile-email"><span className="avatar large">{session.user.email?.[0].toUpperCase()}</span><div><small>Conectado como</small><strong>{session.user.email}</strong></div></div><div className="profile-trust"><ShieldCheck size={19}/><span>Acesso protegido e caderno particular</span></div><button className="button button-outline" onClick={async()=>{await supabase?.auth.signOut();onDone()}}><LogOut size={18}/> Sair da conta</button></div></section></main>
+  return <main className="auth-shell"><section className="auth-visual"><img src="/assets/login-ranch-kitchen.jpg" alt="Caderno aberto em uma cozinha de rancho iluminada por lampião"/><div className="auth-visual-copy"><div className="auth-brand"><RanchMark size={98}/><div><strong>Rancho da Cozinha</strong><small>receitas da casa desde sempre</small></div></div><blockquote>“Toda casa tem receitas que merecem atravessar gerações.”</blockquote><span>Seu caderno particular, sempre à mão.</span></div></section><section className="auth-panel"><form className="auth-card" onSubmit={e=>void submit(e)}><span className="auth-kicker"><LockKeyhole size={16}/> Acesso exclusivo</span><h1>{mode==='login'?'Entre no seu rancho':'Abra seu caderno'}</h1><p className="auth-lead">Entre para acessar suas receitas, sua despensa e as memórias da sua cozinha.</p><button className="google-button" type="button" onClick={()=>void google()}><span>G</span> Continuar com Google</button><div className="auth-divider"><span>ou use seu e-mail</span></div><label>E-mail<input type="email" required autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="voce@exemplo.com"/></label><label>Senha<input type="password" required minLength={6} autoComplete={mode==='login'?'current-password':'new-password'} value={password} onChange={e=>setPassword(e.target.value)} placeholder="Mínimo de 6 caracteres"/></label><button className="button auth-submit" type="submit">{mode==='login'?'Entrar na cozinha':'Criar meu caderno'}</button><button className="text-button auth-switch" type="button" onClick={()=>setMode(mode==='login'?'signup':'login')}>{mode==='login'?'Primeira vez por aqui? Criar conta':'Já tenho uma conta'}</button>{message&&<p role="status" className="auth-message">{message}</p>}<div className="auth-security"><ShieldCheck size={17}/><span>Seu conteúdo só aparece depois do login.</span></div></form><a className="auth-credit" href="https://www.jessbranding.com.br" target="_blank" rel="noreferrer">Experiência criada por <strong>Jess Branding</strong></a></section></main>
 }
+
+function LoadingScreen() { return <main className="loading-screen"><RanchMark size={130}/><span className="eyebrow">Preparando a mesa</span><p>Abrindo seu caderno…</p></main> }
+
+function Footer() { return <footer className="site-footer"><div><RanchMark size={58}/><span><strong>Rancho da Cozinha</strong><small>Memórias servidas à mesa.</small></span></div><p>Design e experiência por <a href="https://www.jessbranding.com.br" target="_blank" rel="noreferrer">Jess Branding</a></p></footer> }
 
 function Kitchen({ recipe, onClose }: { recipe: Recipe; onClose: () => void }) {
   const [index,setIndex]=useState(0); const [drawer,setDrawer]=useState(false); const [timers,setTimers]=useState<{id:string;label:string;left:number}[]>([])

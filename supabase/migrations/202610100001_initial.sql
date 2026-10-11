@@ -83,3 +83,15 @@ using (bucket_id = 'recipe-photos' and (storage.foldername(name))[1] = auth.uid(
 with check (bucket_id = 'recipe-photos' and (storage.foldername(name))[1] = auth.uid()::text);
 create policy "Excluir minhas fotos" on storage.objects for delete to authenticated
 using (bucket_id = 'recipe-photos' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- RLS define quais linhas cada papel enxerga; os grants liberam o acesso às tabelas.
+grant usage on schema public to anon, authenticated;
+grant select on table public.ingredients to anon, authenticated;
+grant select on table public.recipes to anon;
+grant select, insert, update, delete on table
+  public.recipes,
+  public.personal_ingredients,
+  public.collections,
+  public.shopping_items,
+  public.cook_logs
+to authenticated;

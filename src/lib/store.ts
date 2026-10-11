@@ -18,14 +18,11 @@ const url = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
 export const supabase = url && key ? createClient(url, key) : null
 export const configured = Boolean(supabase)
+const seedTasks = new Map<string, Promise<void>>()
 
 const tables: TableName[] = ['recipes', 'personal_ingredients', 'collections', 'shopping_items', 'cook_logs']
 export async function loadState(scope: string): Promise<LocalState> {
   let rows = await db.records.where('scope').equals(scope).toArray()
-  if (scope === 'guest' && rows.length === 0) {
-    await Promise.all(examples.map(recipe => saveEntity('guest', 'recipes', recipe, false)))
-    rows = await db.records.where('scope').equals(scope).toArray()
-  }
   const active = rows.filter(row => !row.deleted)
   return {
     recipes: active.filter(row => row.table === 'recipes').map(row => row.payload as Recipe),
@@ -36,9 +33,26 @@ export async function loadState(scope: string): Promise<LocalState> {
   }
 }
 export async function seedAccount(scope: string) {
-  const rows = await db.records.where('scope').equals(scope).count()
-  if (rows) return
-  for (const example of examples) await saveEntity(scope, 'recipes', { ...example, id: uid(), ownerId: scope, ingredients: example.ingredients.map(i => ({ ...i, id: uid() })), steps: example.steps.map(s => ({ ...s, id: uid() })) }, true)
+  if (scope === 'guest') return
+  const running = seedTasks.get(scope)
+  if (running) return running
+  const task = (async () => {
+    const recipeRows = (await db.records.where('scope').equals(scope).toArray()).filter(row => row.table === 'recipes' && !row.deleted)
+    const exampleTitles = new Set(examples.map(recipe => recipe.title))
+    const seen = new Set<string>()
+    for (const row of recipeRows) {
+      const recipe = row.payload as Recipe
+      if (recipe.source !== 'Caderno do Rancho' || !exampleTitles.has(recipe.title)) continue
+      if (!seen.has(recipe.title)) { seen.add(recipe.title); continue }
+      await db.records.delete(row.key)
+      await db.outbox.where('key').equals(row.key).delete()
+    }
+    const remaining = (await db.records.where('scope').equals(scope).toArray()).some(row => row.table === 'recipes' && !row.deleted)
+    if (remaining) return
+    for (const example of examples) await saveEntity(scope, 'recipes', { ...example, id: uid(), ownerId: scope, ingredients: example.ingredients.map(i => ({ ...i, id: uid() })), steps: example.steps.map(s => ({ ...s, id: uid() })) }, true)
+  })()
+  seedTasks.set(scope, task)
+  try { await task } finally { seedTasks.delete(scope) }
 }
 export async function saveEntity(scope: string, table: TableName, payload: Payload, queue = true) {
   const key = `${scope}:${table}:${payload.id}`

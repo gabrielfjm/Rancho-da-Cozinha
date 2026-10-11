@@ -1,5 +1,5 @@
 export function RanchMark({ size = 42 }: { size?: number }) {
-  return <svg width={size} height={size} viewBox="0 0 64 64" fill="none" aria-hidden="true"><path d="M9 45h46M16 45V29l16-12 16 12v16M13 29l19-15 19 15M26 45V32h12v13M20 25v-7h7" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M7 51h50M11 56h42" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+  return <img className="ranch-mark" src="/assets/rancho-emblem.jpg" width={size} height={Math.round(size * .7)} alt="" aria-hidden="true"/>
 }
 export function Skillet({ size = 82 }: { size?: number }) {
   return <svg width={size} height={size} viewBox="0 0 100 100" fill="none" aria-hidden="true"><ellipse cx="44" cy="54" rx="29" ry="17" stroke="currentColor" strokeWidth="3"/><path d="M15 54v9c0 10 13 18 29 18s29-8 29-18v-9M73 57l20-8 3 7-22 10M29 46c4-10 10-15 15-22M45 43c1-8 5-14 11-19" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/></svg>
