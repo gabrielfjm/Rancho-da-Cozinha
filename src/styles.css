@@ -241,6 +241,19 @@ body{background-color:var(--cream);background-image:linear-gradient(rgba(255,255
 .line-pins button{display:grid;place-items:center;width:26px;height:32px;padding:0;border:0;background:none;cursor:pointer}
 .line-pins i{display:block;width:7px;height:17px;border-radius:2px;background:#d3b88b;box-shadow:inset 0 -6px 0 rgba(0,0,0,.08);transition:background .25s,transform .3s}
 .line-pins .is-on i{background:var(--barn);transform:translateY(-3px) rotate(-10deg)}
+.line-pins i{position:relative;overflow:hidden}
+.line-pins .is-on i:has(b){background:#dcae9f}
+.line-pins i b{position:absolute;inset:0;background:var(--barn);transform:scaleY(0);transform-origin:bottom;animation:pin-fill linear forwards}
+@keyframes pin-fill{to{transform:scaleY(1)}}
+.line-arrow.small .line-arrow-sign{width:40px;height:46px}
+.note-why{display:inline-block;margin:2px 0 -2px;padding:1px 9px 0;background:#efdfbd;border:1px dashed #b99a6c;font-family:Caveat;font-size:17px;line-height:1.3;color:var(--leather);transform:rotate(-1.5deg)}
+.climate-card{cursor:pointer;touch-action:pan-y;-webkit-tap-highlight-color:transparent;transition:box-shadow .3s}
+.climate-card:hover{box-shadow:0 20px 48px rgba(60,31,17,.24)}
+.climate-card:hover h3{text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:6px}
+.climate-photo img{pointer-events:none;-webkit-user-drag:none}
+.climate-pager{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px 12px;margin-top:16px}
+.climate-pager>span{font-family:Caveat;font-size:20px;color:var(--muted)}
+.weather-pill>span strong:first-child{color:var(--leather)}
 .line-pins button:focus-visible{border-radius:4px;outline:3px solid var(--wheat)}
 .line-pager>span{min-width:76px;font-family:Caveat;font-size:21px;color:var(--muted)}
 
@@ -418,6 +431,8 @@ body{background-color:var(--cream);background-image:linear-gradient(rgba(255,255
   .clothesline-frame{padding-inline:12px}
   .line-arrow-sign{width:42px;height:54px}
   .line-pins button{width:22px}
+  .climate-pager{gap:6px}
+  .climate-pager>span{order:3;width:100%;text-align:center;margin-top:-4px}
   .review-card{padding:30px 20px 24px}
   .review-card h2{font-size:28px}
   .rosette-wrap{margin:-10px 0 -30px}.rosette-wrap svg{width:72px;height:97px}

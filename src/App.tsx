@@ -8,7 +8,8 @@ import type { Collection, CookLog, IngredientBase, LocalState, Recipe, ShoppingI
 import { CATEGORIES, INGREDIENT_CATEGORIES } from './types'
 import { deleteEntity, configured, loadState, pendingChanges, saveEntity, seedAccount, supabase, sync, uploadAvatar } from './lib/store'
 import { normalize, prettyAmount, uid } from './lib/format'
-import { brazilianRecipes, suggestedRecipe, type BrazilianRecipe } from './data/brazilianRecipes'
+import { brazilianRecipes, type BrazilianRecipe } from './data/brazilianRecipes'
+import { currentMoment, momentSentence, rankForMoment } from './lib/moment'
 import { ranchReviews } from './data/ranchReviews'
 import { calorieLabel } from './lib/nutrition'
 import { weatherAtCurrentLocation, weatherDescription, type WeatherContext } from './lib/weather'
@@ -21,6 +22,7 @@ import { BusyButton, CountUp, InkBox, Stir, SyncLamp, TicketStack, useBusy, type
 import { Photo } from './components/Photo'
 import { DishFx, dishMotion, fxClass } from './components/DishFx'
 import { MiniReview, ReviewLine, Rosette } from './components/RanchReview'
+import { Pins, SignArrow, useRotation } from './components/Carousel'
 
 type Page = 'home' | 'notebook' | 'pantry' | 'shopping' | 'settings' | 'auth' | 'form' | 'recipe' | 'kitchen'
 const emptyState: LocalState = { recipes: [], customIngredients: [], collections: [], shopping: [], cookLogs: [] }
@@ -255,6 +257,12 @@ function CatalogCard({ item, onOpen }: { item: BrazilianRecipe; onOpen: () => vo
   </motion.article>
 }
 
+const FEATURE_DWELL = 7000
+const featureSwap = {
+  enter: (dir: number) => ({ opacity: 0, x: dir * 44, rotate: dir * 0.8 }),
+  center: { opacity: 1, x: 0, rotate: 0, transition: { duration: 0.45, ease: ink } },
+  exit: (dir: number) => ({ opacity: 0, x: dir * -32, rotate: dir * -0.8, transition: { duration: 0.22 } })
+}
 function HomePage({ recipes, openRecipe, saveSuggestion, newRecipe, navigate }: { recipes: Recipe[]; openRecipe: (r: Recipe) => void; saveSuggestion: (r: Recipe) => Promise<boolean>; newRecipe: () => void; navigate: (p: Page) => void }) {
   const [weather, setWeather] = useState<WeatherContext>()
   const [weatherState, setWeatherState] = useState<'loading' | 'ready' | 'denied'>('loading')
@@ -264,7 +272,21 @@ function HomePage({ recipes, openRecipe, saveSuggestion, newRecipe, navigate }: 
     catch { setWeatherState('denied') }
   }
   useEffect(() => { void loadWeather() }, [])
-  const recommendation = suggestedRecipe(weather?.temperature, weather?.region)
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => { const timer = setInterval(() => setNow(new Date()), 5 * 60 * 1000); return () => clearInterval(timer) }, [])
+  const moment = useMemo(() => currentMoment(weather, now), [weather, now])
+  const picks = useMemo(() => rankForMoment(brazilianRecipes, moment, now), [moment, now])
+  const featured = picks.slice(0, 4)
+  const featuredKey = featured.map(item => item.recipe.id).join()
+  const daily = useRef<HTMLElement>(null)
+  const rotation = useRotation(featured.length, FEATURE_DWELL, daily)
+  useEffect(() => { rotation.setIndex(0) }, [featuredKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Direção da troca: para a direita ao avançar (inclusive quando volta ao começo sozinho).
+  const shownIndex = useRef(rotation.index); const direction = useRef(1)
+  if (shownIndex.current !== rotation.index) { direction.current = (rotation.index - shownIndex.current + featured.length) % featured.length === 1 ? 1 : -1; shownIndex.current = rotation.index }
+  const cardDragged = useRef(false)
+  const pick = featured[rotation.index] ?? picks[0]
+  const recommendation = pick.recipe
   const review = ranchReviews[recommendation.id]
   const fx = dishMotion(recommendation)
   const recent = [...recipes].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 4)
@@ -274,30 +296,43 @@ function HomePage({ recipes, openRecipe, saveSuggestion, newRecipe, navigate }: 
       <div><button className="button" onClick={newRecipe}><Plus size={18}/> Nova receita</button><button className="button button-paper" onClick={() => navigate('pantry')}>Cozinhar com o que tenho</button></div>
     </motion.section>
 
-    <section className="daily smart-daily">
-      <div className="section-row"><div className="section-intro"><span className="eyebrow">Sugestão inteligente do Rancho</span><h2>O prato certo para o clima</h2></div>
-        <div className={`weather-pill ${weatherState}`}>{weatherState === 'ready' && weather ? <><CloudSun size={19}/><span><strong><CountUp value={Math.round(weather.temperature)} suffix=" °C"/></strong> em {weather.city} · {weatherDescription(weather.weatherCode)}</span></> : weatherState === 'loading' ? <><Thermo/><span>Consultando o clima local…</span></> : <button onClick={() => void loadWeather()}><MapPin size={16}/> Usar minha localização</button>}</div>
+    <section className="daily smart-daily" ref={daily}>
+      <div className="section-row"><div className="section-intro"><span className="eyebrow">Sugestão do Rancho para agora</span><h2>O prato certo para agora</h2></div>
+        <div className={`weather-pill ${weatherState}`}>{weatherState === 'ready' && weather ? <><CloudSun size={19}/><span><strong>{moment.dayLabel}, {moment.partLabel}</strong> · <CountUp value={Math.round(weather.temperature)} suffix=" °C"/> em {weather.city} · {weatherDescription(weather.weatherCode)}</span></> : weatherState === 'loading' ? <><Thermo/><span><strong>{moment.dayLabel}, {moment.partLabel}</strong> · consultando o clima…</span></> : <><span><strong>{moment.dayLabel}, {moment.partLabel}</strong></span><button onClick={() => void loadWeather()}><MapPin size={16}/> Usar minha localização</button></>}</div>
       </div>
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.article key={recommendation.id} className="climate-card" initial={{ opacity: 0, x: 34, rotate: 0.7 }} animate={{ opacity: 1, x: 0, rotate: 0 }} exit={{ opacity: 0, x: -26, rotate: -0.7, transition: { duration: 0.22 } }} transition={{ duration: 0.45, ease: ink }}>
-          <div className={`climate-photo ${fxClass(fx)} always`}><Photo value={recommendation.cover} alt={recommendation.title}/><DishFx kind={fx} mode="always"/>
-            {review && <motion.div className="climate-rosette" initial={{ rotate: -38, scale: 0.4, opacity: 0 }} animate={{ rotate: -8, scale: 1, opacity: 1 }} transition={{ type: 'spring', stiffness: 170, damping: 9, delay: 0.4 }}><Rosette score={review.score} size={84}/></motion.div>}
-          </div>
-          <div className="climate-card-copy">
-            <motion.span className="recommendation-badge" initial={{ scale: 1.6, opacity: 0, rotate: -9 }} animate={{ scale: 1, opacity: 1, rotate: 0 }} transition={{ ...stamp, delay: 0.25 }}><ThermometerSun size={16}/>{weather ? `${Math.round(weather.temperature)} °C combina com esta receita` : 'Escolha brasileira do dia'}</motion.span>
-            <span className="eyebrow">{recommendation.regions.join(' · ')}</span><h3>{recommendation.title}</h3><p>{recommendation.description}</p>
-            {review && <p className="climate-verdict">“{review.verdict}”<small>— cozinha de teste do Rancho</small></p>}
-            <div className="recommendation-meta"><span><Flame size={16}/>{calorieLabel(recommendation)}</span><span>{recommendation.prepMinutes + recommendation.cookMinutes} min</span><span>rende {recommendation.servings}</span></div>
-            <div className="recommendation-actions"><button className="button" onClick={() => openRecipe(recommendation)}><BookOpen size={17}/> Visualizar receita</button><BusyButton className="text-button" busyLabel="Copiando a ficha…" onClick={() => saveSuggestion(recommendation)}><Plus size={17}/> Guardar no meu caderno</BusyButton></div>
-          </div>
-        </motion.article>
-      </AnimatePresence>
+      <div className="climate-stage" {...rotation.hoverProps}>
+        <AnimatePresence mode="wait" initial={false} custom={direction.current}>
+          <motion.article key={recommendation.id} className="climate-card" custom={direction.current} variants={featureSwap} initial="enter" animate="center" exit="exit"
+            drag={featured.length > 1 ? 'x' : false} dragConstraints={{ left: 0, right: 0 }} dragElastic={0.3} dragSnapToOrigin
+            onPointerDown={() => { cardDragged.current = false }}
+            onDragStart={() => { cardDragged.current = true; rotation.setDragging(true) }}
+            onDragEnd={(_, info) => { rotation.setDragging(false); if (info.offset.x < -60 || info.velocity.x < -400) rotation.goTo(rotation.index + 1); else if (info.offset.x > 60 || info.velocity.x > 400) rotation.goTo(rotation.index - 1); else rotation.rest() }}
+            onClick={() => { if (!cardDragged.current) openRecipe(recommendation) }}>
+            <div className={`climate-photo ${fxClass(fx)} always`}><Photo value={recommendation.cover} alt={recommendation.title}/><DishFx kind={fx} mode="always"/>
+              {review && <motion.div className="climate-rosette" initial={{ rotate: -38, scale: 0.4, opacity: 0 }} animate={{ rotate: -8, scale: 1, opacity: 1 }} transition={{ type: 'spring', stiffness: 170, damping: 9, delay: 0.4 }}><Rosette score={review.score} size={84}/></motion.div>}
+            </div>
+            <div className="climate-card-copy">
+              <motion.span className="recommendation-badge" initial={{ scale: 1.6, opacity: 0, rotate: -9 }} animate={{ scale: 1, opacity: 1, rotate: 0 }} transition={{ ...stamp, delay: 0.25 }}><ThermometerSun size={16}/>{pick.reason ?? 'Escolha da cozinha do Rancho'}{moment.temperature !== undefined ? ` · ${moment.temperature} °C` : ''}</motion.span>
+              <span className="eyebrow">{recommendation.regions.join(' · ')}</span><h3>{recommendation.title}</h3><p>{recommendation.description}</p>
+              {review && <p className="climate-verdict">“{review.verdict}”<small>— cozinha de teste do Rancho</small></p>}
+              <div className="recommendation-meta"><span><Flame size={16}/>{calorieLabel(recommendation)}</span><span>{recommendation.prepMinutes + recommendation.cookMinutes} min</span><span>rende {recommendation.servings}</span></div>
+              <div className="recommendation-actions"><button className="button" onClick={event => { event.stopPropagation(); openRecipe(recommendation) }}><BookOpen size={17}/> Abrir a receita</button><span onClick={event => event.stopPropagation()}><BusyButton className="text-button" busyLabel="Copiando a ficha…" onClick={() => saveSuggestion(recommendation)}><Plus size={17}/> Guardar no meu caderno</BusyButton></span></div>
+            </div>
+          </motion.article>
+        </AnimatePresence>
+        {featured.length > 1 && <div className="climate-pager">
+          <SignArrow small direction="prev" label="Sugestão anterior" onClick={() => rotation.goTo(rotation.index - 1)}/>
+          <Pins count={featured.length} current={rotation.index} playing={rotation.playing} dwell={FEATURE_DWELL} onPick={rotation.goTo} label={index => `Ver sugestão ${index + 1}: ${featured[index].recipe.title}`}/>
+          <span>{rotation.index + 1} de {featured.length} ideias para agora</span>
+          <SignArrow small direction="next" label="Próxima sugestão" onClick={() => rotation.goTo(rotation.index + 1)}/>
+        </div>}
+      </div>
     </section>
 
-    <section className="home-section tasting-section"><div className="section-row"><div><span className="eyebrow">Provado e aprovado</span><h2>Varal de provas do Rancho</h2><p>Cada receita da base passou pela nossa cozinha antes de chegar aqui. Estas são as notas.</p></div><span className="catalog-count">{Object.keys(ranchReviews).length} fichas julgadas</span></div><ReviewLine recipes={brazilianRecipes} onOpen={openRecipe}/></section>
+    <section className="home-section tasting-section"><div className="section-row"><div><span className="eyebrow">Provado e aprovado</span><h2>Varal de provas do Rancho</h2><p>{momentSentence(moment)}: as primeiras fichas do varal combinam com agora.</p></div><span className="catalog-count">{Object.keys(ranchReviews).length} fichas julgadas</span></div><ReviewLine picks={picks} onOpen={openRecipe}/></section>
 
     <section className="home-section catalog-section"><div className="section-row"><div><span className="eyebrow">Base brasileira do Rancho</span><h2>Sabores de várias regiões</h2><p>Receitas selecionadas e prontas para entrar no seu caderno.</p></div><span className="catalog-count">{brazilianRecipes.length} receitas</span></div>
-      <motion.div className="catalog-grid" {...inView} variants={stack(0.07)}>{brazilianRecipes.filter(item => item.id !== recommendation.id).slice(0, 6).map(item => <CatalogCard key={item.id} item={item} onOpen={() => openRecipe(item)}/>)}</motion.div>
+      <motion.div className="catalog-grid" {...inView} variants={stack(0.07)}>{brazilianRecipes.filter(item => item.id !== picks[0].recipe.id).slice(0, 6).map(item => <CatalogCard key={item.id} item={item} onOpen={() => openRecipe(item)}/>)}</motion.div>
     </section>
 
     <section className="home-section"><div className="section-row"><div><span className="eyebrow">Páginas recentes</span><h2>Do seu caderno</h2></div><button className="text-button" onClick={() => navigate('notebook')}>Ver todas →</button></div>{recent.length ? <div className="card-grid">{recent.map((r, i) => <RecipeCard key={r.id} recipe={r} index={i} onOpen={() => openRecipe(r)}/>)}</div> : <EmptyNotebook newRecipe={newRecipe}/>}</section>
