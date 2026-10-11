@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Fuse from 'fuse.js'
 import { AnimatePresence, MotionConfig, motion } from 'framer-motion'
-import { Archive, BookOpen, Camera, Cloud, CloudSun, Download, Flame, Home, LockKeyhole, LogOut, MapPin, Menu, Plus, Search, ShieldCheck, ShoppingBasket, ThermometerSun, Upload, UserRound, UtensilsCrossed, X } from 'lucide-react'
+import { Archive, BookOpen, Camera, Cloud, Download, Flame, FolderPlus, Home, LockKeyhole, LogOut, Menu, Plus, Search, ShieldCheck, ShoppingBasket, SlidersHorizontal, ThermometerSun, Upload, UserRound, UtensilsCrossed, X } from 'lucide-react'
 import type { Session } from '@supabase/supabase-js'
 import ingredientsJson from './data/ingredients.json'
 import type { Collection, CookLog, IngredientBase, LocalState, Recipe, ShoppingItem } from './types'
@@ -12,7 +12,7 @@ import { brazilianRecipes, type BrazilianRecipe } from './data/brazilianRecipes'
 import { currentMoment, momentSentence, rankForMoment } from './lib/moment'
 import { ranchReviews } from './data/ranchReviews'
 import { calorieLabel } from './lib/nutrition'
-import { weatherAtCurrentLocation, weatherDescription, type WeatherContext } from './lib/weather'
+import { weatherAtCurrentLocation, type WeatherContext } from './lib/weather'
 import { inView, ink, pageVariants, paper, rise, stack, stamp, type PageMotion } from './lib/motion'
 import { RecipeCard } from './components/RecipeCard'
 import { RecipeForm } from './components/RecipeForm'
@@ -23,6 +23,9 @@ import { Photo } from './components/Photo'
 import { DishFx, dishMotion, fxClass } from './components/DishFx'
 import { MiniReview, ReviewLine, Rosette } from './components/RanchReview'
 import { Pins, SignArrow, useRotation } from './components/Carousel'
+import { FavoriteToggle, HatPicker, PaperSelect, useMedia } from './components/Filters'
+import { WeatherTicket } from './components/WeatherTicket'
+import { Footer } from './components/Footer'
 
 type Page = 'home' | 'notebook' | 'pantry' | 'shopping' | 'settings' | 'auth' | 'form' | 'recipe' | 'kitchen'
 const emptyState: LocalState = { recipes: [], customIngredients: [], collections: [], shopping: [], cookLogs: [] }
@@ -222,7 +225,7 @@ export default function App() {
               {page === 'kitchen' && selected && <Kitchen recipe={selected} onClose={() => go('recipe', 'open')}/>}
             </motion.div>
           </AnimatePresence>
-          <Footer/>
+          <Footer navigate={target => go(target)} newRecipe={newRecipe}/>
         </motion.div>}
     </AnimatePresence>
     <TicketStack notes={notes} dismiss={id => setNotes(current => current.filter(note => note.id !== id))}/>
@@ -243,10 +246,6 @@ function Header({ page, navigate, menu, setMenu, session, isAdmin, syncStatus, p
     <nav className={menu ? 'open' : ''}>{nav.map(([target, label, icon]) => <button key={target} className={page === target ? 'active' : ''} onClick={() => navigate(target)}>{icon}{label}{page === target && <motion.span layoutId="nav-ink" className="nav-ink" transition={paper}/>}</button>)}</nav>
     <div className="header-tools"><SyncLamp status={syncStatus} pending={pending} onRetry={onSync}/><button className="profile-link" onClick={() => navigate('auth')}><ProfileAvatar session={session}/><span><b>{name}</b><small>Perfil</small></span></button><button className="logout-button" onClick={() => void supabase?.auth.signOut()} aria-label="Sair da conta" title="Sair da conta"><LogOut size={19}/><span>Sair</span></button><button className="menu-button" onClick={() => setMenu(!menu)} aria-label={menu ? 'Fechar menu' : 'Abrir menu'} aria-expanded={menu}>{menu ? <X/> : <Menu/>}</button></div>
   </header></>
-}
-
-function Thermo() {
-  return <svg className="thermo" width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M10 14.5V5a2 2 0 1 1 4 0v9.5a4 4 0 1 1-4 0Z" stroke="currentColor" strokeWidth="1.7"/><rect className="thermo-mercury" x="11.2" y="7" width="1.6" height="10" rx=".8" fill="currentColor"/><circle cx="12" cy="17.6" r="2" fill="currentColor"/></svg>
 }
 
 function CatalogCard({ item, onOpen }: { item: BrazilianRecipe; onOpen: () => void }) {
@@ -298,7 +297,7 @@ function HomePage({ recipes, openRecipe, saveSuggestion, newRecipe, navigate }: 
 
     <section className="daily smart-daily" ref={daily}>
       <div className="section-row"><div className="section-intro"><span className="eyebrow">Sugestão do Rancho para agora</span><h2>O prato certo para agora</h2></div>
-        <div className={`weather-pill ${weatherState}`}>{weatherState === 'ready' && weather ? <><CloudSun size={19}/><span><strong>{moment.dayLabel}, {moment.partLabel}</strong> · <CountUp value={Math.round(weather.temperature)} suffix=" °C"/> em {weather.city} · {weatherDescription(weather.weatherCode)}</span></> : weatherState === 'loading' ? <><Thermo/><span><strong>{moment.dayLabel}, {moment.partLabel}</strong> · consultando o clima…</span></> : <><span><strong>{moment.dayLabel}, {moment.partLabel}</strong></span><button onClick={() => void loadWeather()}><MapPin size={16}/> Usar minha localização</button></>}</div>
+        <WeatherTicket weather={weather} state={weatherState} moment={moment} onLocate={() => void loadWeather()}/>
       </div>
       <div className="climate-stage" {...rotation.hoverProps}>
         <AnimatePresence mode="wait" initial={false} custom={direction.current}>
@@ -351,22 +350,65 @@ function EmptyNotebook({ newRecipe }: { newRecipe: () => void }) {
 
 function Notebook({ recipes, collections, onSaveCollection, openRecipe, newRecipe }: { recipes: Recipe[]; collections: Collection[]; onSaveCollection: (c: Collection, message: string) => Promise<boolean>; openRecipe: (r: Recipe) => void; newRecipe: () => void }) {
   const [query, setQuery] = useState(''); const [category, setCategory] = useState('Todas'); const [favorite, setFavorite] = useState(false); const [difficulty, setDifficulty] = useState(0); const [collectionId, setCollectionId] = useState(''); const [newCollection, setNewCollection] = useState('')
+  const [naming, setNaming] = useState(false)
   const [creating, runCreate] = useBusy()
+  const narrow = useMedia('(max-width: 700px)')
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const fuse = useMemo(() => new Fuse(recipes, { keys: ['title', 'description', 'tags', 'ingredients.name'], threshold: .35, ignoreLocation: true }), [recipes])
   const searched = query ? fuse.search(query).map(r => r.item) : recipes
   const activeCollection = collections.find(c => c.id === collectionId)
   const filtered = searched.filter(r => (category === 'Todas' || r.category === category) && (!favorite || r.favorite) && (!difficulty || r.difficulty === difficulty) && (!activeCollection || activeCollection.recipeIds.includes(r.id)))
+  const categories = [...new Set([...CATEGORIES, ...recipes.map(r => r.category)])]
+  const categoryOptions = [{ value: 'Todas', label: 'Todas as categorias' }, ...categories.map(name => { const count = recipes.filter(r => r.category === name).length; return { value: name, label: name, hint: count ? String(count) : undefined } })]
+  const collectionOptions = [{ value: '', label: 'Todas as coleções' }, ...collections.map(c => ({ value: c.id, label: c.name, hint: String(c.recipeIds.length) }))]
+  const active: { key: string; label: string; clear: () => void }[] = [
+    ...(query ? [{ key: 'q', label: `“${query}”`, clear: () => setQuery('') }] : []),
+    ...(category !== 'Todas' ? [{ key: 'c', label: category, clear: () => setCategory('Todas') }] : []),
+    ...(difficulty ? [{ key: 'd', label: `${difficulty} chapéu${difficulty > 1 ? 's' : ''}`, clear: () => setDifficulty(0) }] : []),
+    ...(favorite ? [{ key: 'f', label: 'Favoritas', clear: () => setFavorite(false) }] : []),
+    ...(activeCollection ? [{ key: 'k', label: activeCollection.name, clear: () => setCollectionId('') }] : [])
+  ]
+  const filterCount = active.filter(item => item.key !== 'q').length
+  function clearAll() { setQuery(''); setCategory('Todas'); setDifficulty(0); setFavorite(false); setCollectionId('') }
   function createCollection() {
     const name = newCollection.trim(); if (!name) return
-    void runCreate(async () => { const c = { id: uid(), name, recipeIds: [] }; if (await onSaveCollection(c, `Coleção “${name}” criada.`)) { setCollectionId(c.id); setNewCollection('') } })
+    void runCreate(async () => { const c = { id: uid(), name, recipeIds: [] }; if (await onSaveCollection(c, `Coleção “${name}” criada.`)) { setCollectionId(c.id); setNewCollection(''); setNaming(false) } })
   }
   function addToCollection(recipe: Recipe, id: string) { const c = collections.find(x => x.id === id); if (!c) return; void onSaveCollection({ ...c, recipeIds: [...new Set([...c.recipeIds, recipe.id])] }, `“${recipe.title}” foi para ${c.name}.`) }
+  const showFilters = !narrow || filtersOpen
   return <main className="page notebook-page">
     <div className="page-heading"><div><span className="eyebrow">Fichas guardadas</span><h1>Meu caderno</h1><p>{recipes.length} receita{recipes.length !== 1 ? 's' : ''}, cada uma com sua história.</p></div><button className="button" onClick={newRecipe}><Plus size={18}/> Nova receita</button></div>
-    <motion.div className="search-panel" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: ink }}><label className="search-box"><Search size={19}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar por nome, ingrediente ou tag"/></label><div className="filter-row"><select aria-label="Filtrar por categoria" value={category} onChange={e => setCategory(e.target.value)}><option>Todas</option>{[...new Set([...CATEGORIES, ...recipes.map(r => r.category)])].map(x => <option key={x}>{x}</option>)}</select><select aria-label="Filtrar por dificuldade" value={difficulty} onChange={e => setDifficulty(Number(e.target.value))}><option value="0">Toda dificuldade</option><option value="1">1 chapéu</option><option value="2">2 chapéus</option><option value="3">3 chapéus</option></select><label className="check-chip"><input type="checkbox" checked={favorite} onChange={e => setFavorite(e.target.checked)}/> Favoritas da casa</label></div><div className="collection-tools"><select aria-label="Filtrar por coleção" value={collectionId} onChange={e => setCollectionId(e.target.value)}><option value="">Todas as coleções</option>{collections.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select><input value={newCollection} onChange={e => setNewCollection(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') createCollection() }} placeholder="Nova coleção, ex.: Natal"/><button className="button button-small" onClick={createCollection} disabled={creating}>{creating ? <><Stir/> Criando…</> : 'Criar coleção'}</button></div></motion.div>
+    <motion.section className="search-panel fichario" aria-label="Buscar e filtrar receitas" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: ink }}>
+      <span className="fichario-tab" aria-hidden="true">Fichário</span>
+      <div className="fichario-top">
+        <label className="search-box"><Search size={19}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder={narrow ? 'Buscar receita' : 'Nome, ingrediente ou tag'} aria-label="Buscar receitas por nome, ingrediente ou tag"/>{query && <button type="button" className="search-clear" aria-label="Limpar busca" onClick={() => setQuery('')}><X size={16}/></button>}</label>
+        {narrow && <button type="button" className={`filter-toggle${filtersOpen ? ' is-open' : ''}`} aria-expanded={filtersOpen} onClick={() => setFiltersOpen(!filtersOpen)}><SlidersHorizontal size={18}/> Filtros{filterCount > 0 && <b>{filterCount}</b>}</button>}
+      </div>
+      <AnimatePresence initial={false}>{showFilters && <motion.div className="fichario-filters" initial={narrow ? { opacity: 0, y: -8 } : false} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6, transition: { duration: 0.14 } }} transition={{ duration: 0.22, ease: ink }}>
+        <PaperSelect label="Categoria" value={category} options={categoryOptions} onChange={setCategory}/>
+        <HatPicker value={difficulty} onChange={setDifficulty}/>
+        <FavoriteToggle on={favorite} onChange={setFavorite}/>
+        {collections.length > 0 && <PaperSelect label="Coleção" value={collectionId} options={collectionOptions} onChange={setCollectionId}/>}
+        <div className="new-collection">
+          <AnimatePresence mode="wait" initial={false}>{naming
+            ? <motion.form key="form" className="new-collection-form" onSubmit={event => { event.preventDefault(); createCollection() }} initial={{ opacity: 0, width: 0 }} animate={{ opacity: 1, width: 'auto' }} exit={{ opacity: 0, width: 0 }} transition={{ duration: 0.22, ease: ink }}>
+                <input autoFocus value={newCollection} onChange={e => setNewCollection(e.target.value)} onKeyDown={e => { if (e.key === 'Escape') setNaming(false) }} placeholder="Ex.: Natal, Domingo em família" aria-label="Nome da nova coleção"/>
+                <button type="submit" className="button button-small" disabled={creating || !newCollection.trim()}>{creating ? <><Stir/> Criando…</> : 'Criar'}</button>
+                <button type="button" className="icon-button" aria-label="Cancelar nova coleção" onClick={() => setNaming(false)}><X size={16}/></button>
+              </motion.form>
+            : <motion.button key="open" type="button" className="new-collection-open" onClick={() => setNaming(true)} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><FolderPlus size={17}/> Nova coleção</motion.button>}
+          </AnimatePresence>
+        </div>
+      </motion.div>}</AnimatePresence>
+      <div className="fichario-foot">
+        <span className="fichario-count">{filtered.length === recipes.length ? `${recipes.length} fichas no fichário` : `${filtered.length} de ${recipes.length} fichas`}</span>
+        <AnimatePresence initial={false}>{active.map(item => <motion.button layout key={item.key} type="button" className="filter-chip" aria-label={`Tirar filtro ${item.label}`} onClick={item.clear} initial={{ opacity: 0, y: -10, rotate: -6 }} animate={{ opacity: 1, y: 0, rotate: -1 }} exit={{ opacity: 0, scale: 0.7, transition: { duration: 0.14 } }} transition={paper}>{item.label}<X size={13}/></motion.button>)}</AnimatePresence>
+        {active.length > 1 && <button type="button" className="text-button fichario-clear" onClick={clearAll}>Limpar tudo</button>}
+      </div>
+    </motion.section>
     <AnimatePresence mode="wait" initial={false}>{filtered.length
-      ? <motion.div key="grid" layout className="card-grid roomy" exit={{ opacity: 0 }}><AnimatePresence mode="popLayout">{filtered.map((r, i) => <motion.div layout className="card-wrap" key={r.id} exit={{ opacity: 0, scale: 0.9, rotate: -3, transition: { duration: 0.2 } }} transition={paper}><RecipeCard recipe={r} index={i} onOpen={() => openRecipe(r)}/>{collections.length > 0 && <select aria-label={`Adicionar ${r.title} a uma coleção`} defaultValue="" onChange={e => { addToCollection(r, e.target.value); e.target.value = '' }}><option value="" disabled>+ coleção</option>{collections.filter(c => !c.recipeIds.includes(r.id)).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>}</motion.div>)}</AnimatePresence></motion.div>
-      : <motion.div key="empty" className="empty-state small" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}><Search/><h2>Nenhuma ficha encontrada</h2><p>Tente retirar um filtro ou buscar outro ingrediente.</p></motion.div>}
+      ? <motion.div key="grid" layout className="card-grid roomy" exit={{ opacity: 0 }}><AnimatePresence mode="popLayout">{filtered.map((r, i) => { const available = collections.filter(c => !c.recipeIds.includes(r.id)); return <motion.div layout className="card-wrap" key={r.id} exit={{ opacity: 0, scale: 0.9, rotate: -3, transition: { duration: 0.2 } }} transition={paper}><RecipeCard recipe={r} index={i} onOpen={() => openRecipe(r)}/>{available.length > 0 && <PaperSelect compact label={`Guardar ${r.title} em uma coleção`} value="" placeholder="Guardar em coleção" icon={<FolderPlus size={15}/>} options={available.map(c => ({ value: c.id, label: c.name }))} onChange={id => addToCollection(r, id)}/>}</motion.div> })}</AnimatePresence></motion.div>
+      : <motion.div key="empty" className="empty-state small" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}><Search/><h2>Nenhuma ficha encontrada</h2><p>Tente retirar um filtro ou buscar outro ingrediente.</p>{active.length > 0 && <button className="button button-outline button-small" onClick={clearAll}>Limpar filtros</button>}</motion.div>}
     </AnimatePresence>
   </main>
 }
@@ -489,7 +531,6 @@ function LoadingScreen() {
   </motion.main>
 }
 
-function Footer() { return <footer className="site-footer"><div><RanchMark size={58}/><span><strong>Rancho da Cozinha</strong><small>Memórias servidas à mesa.</small></span></div><p>Design e experiência por <a href="https://www.jessbranding.com.br" target="_blank" rel="noreferrer">Jess Branding</a></p></footer> }
 
 type KitchenTimer = { id: string; label: string; total: number; left: number }
 // Campainha de relógio de corda: três toques curtos, sem arquivo de áudio.
