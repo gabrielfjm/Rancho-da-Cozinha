@@ -1,0 +1,9 @@
+node_modules
+dist
+.env
+.env.local
+*.log
+taco.xlsx
+__pycache__/
+*.pyc
+*.tsbuildinfo
