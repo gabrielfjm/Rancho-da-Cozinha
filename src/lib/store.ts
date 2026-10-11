@@ -92,6 +92,10 @@ export async function sync(scope: string): Promise<void> {
     }
   }
 }
+export async function pendingChanges(scope: string) {
+  if (scope === 'guest') return 0
+  return new Set((await db.outbox.where('scope').equals(scope).toArray()).map(entry => entry.key)).size
+}
 export async function clearScope(scope: string) {
   await db.records.where('scope').equals(scope).delete()
   await db.outbox.where('scope').equals(scope).delete()
