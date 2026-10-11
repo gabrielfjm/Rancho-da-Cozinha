@@ -3,11 +3,12 @@ import Fuse from 'fuse.js'
 import { DndContext, PointerSensor, KeyboardSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical, ImagePlus, Plus, Save, Trash2, X } from 'lucide-react'
+import { Flame, GripVertical, ImagePlus, Plus, Save, Trash2, X } from 'lucide-react'
 import type { IngredientBase, Recipe, RecipeIngredient, Step } from '../types'
 import { CATEGORIES, INGREDIENT_CATEGORIES } from '../types'
 import { parseAmount, prettyAmount, uid } from '../lib/format'
 import { uploadImage } from '../lib/store'
+import { calculateNutrition } from '../lib/nutrition'
 
 function SortableRow({ id, children }: { id: string; children: React.ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id })
@@ -41,6 +42,7 @@ export function RecipeForm({ recipe, ingredients, scope, onDraft, onSave, onCanc
   const fuse = useMemo(() => new Fuse(ingredients, { keys: ['name', 'aliases'], threshold: 0.38, ignoreLocation: true }), [ingredients])
   const frequency = useMemo(() => new Map(draft.ingredients.map(i => [i.ingredientId, 1])), [draft.ingredients])
   const matches = query.trim() ? fuse.search(query, { limit: 12 }).map(x => x.item) : ingredients.filter(x => frequency.has(x.id)).slice(0, 6)
+  const nutrition = useMemo(() => calculateNutrition(draft), [draft])
   useEffect(() => { const timer = setTimeout(() => onDraft({ ...draft, updatedAt: new Date().toISOString() }), 700); return () => clearTimeout(timer) }, [draft]) // eslint-disable-line react-hooks/exhaustive-deps
   function patch<K extends keyof Recipe>(key: K, value: Recipe[K]) { setDraft(current => ({ ...current, [key]: value })) }
   function addIngredient(item: IngredientBase) {
@@ -93,7 +95,7 @@ export function RecipeForm({ recipe, ingredients, scope, onDraft, onSave, onCanc
         <label>Cozimento (min)<input type="number" min="0" value={draft.cookMinutes} onChange={e => patch('cookMinutes', Number(e.target.value))}/></label>
         <label>Porções<input type="number" min="1" value={draft.servings} onChange={e => patch('servings', Math.max(1, Number(e.target.value)))}/></label>
         <label>Dificuldade<select value={draft.difficulty} onChange={e => patch('difficulty', Number(e.target.value) as 1 | 2 | 3)}><option value="1">1 chapéu · Fácil</option><option value="2">2 chapéus · Média</option><option value="3">3 chapéus · Caprichada</option></select></label>
-      </div><div className="photo-fields"><label className="photo-upload"><ImagePlus size={20}/> Foto de capa<input type="file" accept="image/*" onChange={e => e.target.files?.[0] && void photo(e.target.files[0], 'cover')}/></label><label className="photo-upload"><ImagePlus size={20}/> Adicionar à galeria<input type="file" accept="image/*" multiple onChange={e => Array.from(e.target.files ?? []).forEach(file => void photo(file, 'gallery'))}/></label><span>{uploading ? 'Comprimindo foto…' : `${draft.gallery.length} foto(s) na galeria`}</span></div></section>
+      </div><div className="calorie-preview"><Flame size={21}/><div><small>Calorias calculadas automaticamente</small><strong>{nutrition.known ? `${Math.round(nutrition.kcal)} kcal por porção` : 'Adicione ingredientes com quantidade'}</strong></div><span>{nutrition.known} de {draft.ingredients.length} ingredientes reconhecidos</span></div><div className="photo-fields"><label className="photo-upload"><ImagePlus size={20}/> Foto de capa<input type="file" accept="image/*" onChange={e => e.target.files?.[0] && void photo(e.target.files[0], 'cover')}/></label><label className="photo-upload"><ImagePlus size={20}/> Adicionar à galeria<input type="file" accept="image/*" multiple onChange={e => Array.from(e.target.files ?? []).forEach(file => void photo(file, 'gallery'))}/></label><span>{uploading ? 'Comprimindo foto…' : `${draft.gallery.length} foto(s) na galeria`}</span></div></section>
       <section className="form-section"><div className="section-heading"><span>03</span><h2>Ingredientes</h2></div><p className="helper">Procure pelo nome. A busca aceita variações e palavras sem acento.</p><div className="ingredient-search"><label>Buscar ingrediente<input value={query} onChange={e => setQuery(e.target.value)} placeholder="Farinha, maçã, cominho…" autoComplete="off"/></label><label>Grupo desta adição<input value={group} onChange={e => setGroup(e.target.value)} placeholder="Massa, recheio…"/></label></div>
         {(query || matches.length > 0) && <div className="suggestions" role="listbox" aria-label="Sugestões de ingredientes">{matches.map(item => <button key={item.id} type="button" role="option" aria-selected="false" onClick={() => addIngredient(item)}><span>{item.name}</span><small>{item.category}</small></button>)}{query && <button type="button" className="create-option" onClick={() => { setCustomName(query); setCreating(true) }}><Plus size={16}/> Criar ingrediente “{query}”</button>}</div>}
         {creating && <div className="custom-ingredient"><h3>Novo ingrediente da casa</h3><div className="form-grid three"><label>Nome<input value={customName} onChange={e => setCustomName(e.target.value)}/></label><label>Setor<select value={customCategory} onChange={e => setCustomCategory(e.target.value)}>{INGREDIENT_CATEGORIES.map(x => <option key={x}>{x}</option>)}</select></label><label>Unidade<select value={customUnit} onChange={e => setCustomUnit(e.target.value)}>{['g','kg','ml','l','unidade','xícara','colher de sopa','colher de chá','pitada'].map(x => <option key={x}>{x}</option>)}</select></label></div><button type="button" className="button button-small" onClick={makeIngredient}>Guardar ingrediente</button><button type="button" className="text-button" onClick={() => setCreating(false)}>Cancelar</button></div>}

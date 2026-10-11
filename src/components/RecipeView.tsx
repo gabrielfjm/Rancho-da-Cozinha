@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, BookOpen, ChefHat, Clock3, Heart, ListPlus, Pencil, Printer, Share2, Star, Trash2 } from 'lucide-react'
 import type { CookLog, Recipe, RecipeIngredient } from '../types'
 import { gramsFor, prettyAmount, uid } from '../lib/format'
+import { calculateNutrition } from '../lib/nutrition'
 import { photoUrl } from '../lib/store'
 import { Ornament, Skillet } from './Artwork'
 
@@ -32,17 +33,7 @@ export function RecipeView({ recipe, logs, onBack, onEdit, onDelete, onFavorite,
   useEffect(() => { void photoUrl(recipe.cover).then(setPhoto) }, [recipe.cover])
   const factor = servings / Math.max(recipe.servings, 1)
   const grouped = useMemo(() => recipe.ingredients.reduce<Record<string, RecipeIngredient[]>>((groups, item) => { (groups[item.group || 'Ingredientes'] ??= []).push(item); return groups }, {}), [recipe.ingredients])
-  const nutrition = useMemo(() => {
-    const total = { kcal: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 }
-    let known = 0
-    for (const item of recipe.ingredients) {
-      const grams = gramsFor(item.amount, item.unit, item.gramsPerUnit)
-      if (grams === null || !item.nutrition) continue
-      known++
-      for (const key of Object.keys(total) as (keyof typeof total)[]) total[key] += (item.nutrition[key] ?? 0) * grams / 100 / Math.max(recipe.servings, 1)
-    }
-    return { ...total, known }
-  }, [recipe])
+  const nutrition = useMemo(() => calculateNutrition(recipe), [recipe])
   function toggle(id: string) { setChecked(current => current.includes(id) ? current.filter(x => x !== id) : [...current, id]) }
   async function share() {
     onShare()
@@ -58,7 +49,7 @@ export function RecipeView({ recipe, logs, onBack, onEdit, onDelete, onFavorite,
     <div className="mobile-tabs no-print"><button className={tab === 'ingredients' ? 'active' : ''} onClick={() => setTab('ingredients')}>Ingredientes</button><button className={tab === 'steps' ? 'active' : ''} onClick={() => setTab('steps')}>Preparo</button></div>
     <div className="open-book"><section className={`book-page ingredients-page ${tab === 'steps' ? 'mobile-hidden' : ''}`}><div className="book-page-title"><span>01 / O que separar</span><h2>Ingredientes</h2></div>{Object.entries(grouped).map(([group, items]) => <div className="ingredient-group" key={group}><h3>{group}</h3><ul>{items.map(item => <li key={item.id}><label className={checked.includes(item.id) ? 'struck' : ''}><input type="checkbox" checked={checked.includes(item.id)} onChange={() => toggle(item.id)}/><span><strong>{measure(item, factor, metric)}</strong> {item.name}{item.note && <em> — {item.note}</em>}</span></label></li>)}</ul></div>)}<button className="button button-outline button-small no-print" onClick={onShopping}><ListPlus size={17}/> Levar para a lista</button>{recipe.utensils.length > 0 && <div className="utensils"><h3>À mão</h3><p>{recipe.utensils.join(' · ')}</p></div>}</section><section className={`book-page steps-page ${tab === 'ingredients' ? 'mobile-hidden' : ''}`}><div className="book-page-title"><span>02 / Hora de cozinhar</span><h2>Modo de preparo</h2></div><ol className="steps-list">{recipe.steps.map((step, index) => <li key={step.id}><span className="step-number">{String(index + 1).padStart(2, '0')}</span><div><p>{step.text}</p>{step.timerMinutes && <small>Relógio: {step.timerMinutes} min</small>}</div></li>)}</ol>{recipe.tips && <div className="tips"><strong>Dica da casa</strong><p>{recipe.tips}</p></div>}</section></div>
     {recipe.gallery.length > 0 && <section className="recipe-gallery"><div><span className="eyebrow">Retratos da mesa</span><h2>Galeria da receita</h2></div><div>{recipe.gallery.map((image,index)=><RemotePhoto key={`${image}-${index}`} value={image} alt={`${recipe.title}, foto ${index+1}`}/>)}</div></section>}
-    <div className="after-book"><section className="nutrition-panel"><h2>Na mesa, por porção</h2><p>Cálculo aproximado com dados disponíveis para {nutrition.known} de {recipe.ingredients.length} ingredientes. Valores sem dados não entram na soma.</p><div className="nutrition-grid">{[['Energia', nutrition.kcal, 'kcal'], ['Proteínas', nutrition.protein, 'g'], ['Carboidratos', nutrition.carbs, 'g'], ['Gorduras', nutrition.fat, 'g'], ['Fibras', nutrition.fiber, 'g']].map(([label, value, unit]) => <div key={label}><span>{label}</span><strong>{Number(value).toFixed(1)} {unit}</strong></div>)}</div></section><section className="cook-history"><h2>Vezes que fiz</h2><div className="log-entry no-print"><input aria-label="Nota deste preparo" value={note} onChange={e => setNote(e.target.value)} placeholder="Como ficou desta vez?"/><button className="button button-small" onClick={() => { onLog({ id: uid(), recipeId: recipe.id, cookedAt: new Date().toISOString(), note }); setNote('') }}>Registrar preparo</button></div>{logs.length === 0 ? <p>A primeira lembrança desta receita ainda está por vir.</p> : logs.map(log => <p className="history-line" key={log.id}><strong>{new Date(log.cookedAt).toLocaleDateString('pt-BR')}</strong> {log.note}</p>)}</section></div>
+    <div className="after-book"><section className="nutrition-panel"><span className="eyebrow">Estimativa automática</span><h2>Na mesa, por porção</h2><p>Calculado automaticamente pelas quantidades e porções, usando a composição disponível para {nutrition.known} de {recipe.ingredients.length} ingredientes.</p><div className="nutrition-grid">{[['Energia', nutrition.kcal, 'kcal'], ['Proteínas', nutrition.protein, 'g'], ['Carboidratos', nutrition.carbs, 'g'], ['Gorduras', nutrition.fat, 'g'], ['Fibras', nutrition.fiber, 'g']].map(([label, value, unit]) => <div key={label}><span>{label}</span><strong>{nutrition.known ? Number(value).toFixed(1) : '—'} {unit}</strong></div>)}</div></section><section className="cook-history"><h2>Vezes que fiz</h2><div className="log-entry no-print"><input aria-label="Nota deste preparo" value={note} onChange={e => setNote(e.target.value)} placeholder="Como ficou desta vez?"/><button className="button button-small" onClick={() => { onLog({ id: uid(), recipeId: recipe.id, cookedAt: new Date().toISOString(), note }); setNote('') }}>Registrar preparo</button></div>{logs.length === 0 ? <p>A primeira lembrança desta receita ainda está por vir.</p> : logs.map(log => <p className="history-line" key={log.id}><strong>{new Date(log.cookedAt).toLocaleDateString('pt-BR')}</strong> {log.note}</p>)}</section></div>
     <Ornament/>
   </main>
 }

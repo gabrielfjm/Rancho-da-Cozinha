@@ -120,6 +120,14 @@ export async function uploadImage(scope: string, file: File): Promise<string> {
     reader.readAsDataURL(blob)
   })
 }
+export async function uploadAvatar(scope: string, file: File): Promise<string> {
+  const blob = await compressImage(file)
+  if (!supabase || scope === 'guest' || !navigator.onLine) throw new Error('Conecte-se à internet para atualizar sua foto.')
+  const path = `${scope}/profile/avatar-${Date.now()}.jpg`
+  const { error } = await supabase.storage.from('recipe-photos').upload(path, blob, { contentType: 'image/jpeg' })
+  if (error) throw error
+  return `storage:${path}`
+}
 export async function photoUrl(value?: string): Promise<string | undefined> {
   if (!value || !value.startsWith('storage:') || !supabase) return value
   const { data } = await supabase.storage.from('recipe-photos').createSignedUrl(value.slice(8), 3600)
