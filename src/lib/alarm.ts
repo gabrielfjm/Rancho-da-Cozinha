@@ -54,7 +54,7 @@ function ensurePlayer() {
 }
 function switchTo(next: 'whisper' | 'bell') {
   const audio = ensurePlayer()
-  if (mode === next && !audio.paused) return
+  if (mode === next) { if (audio.paused) void audio.play().catch(() => {}); return }
   mode = next
   audio.src = next === 'bell' ? sources!.bell : sources!.whisper
   audio.volume = 1
@@ -69,4 +69,5 @@ export function silence() {
   if (!player || mode === 'off') return
   mode = 'off'; player.pause(); player.removeAttribute('src'); player.load()
 }
+export function pauseWhisper() { if (player && mode === 'whisper' && !player.paused) player.pause() }
 export function audioMode() { return mode }

@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { X } from 'lucide-react'
-import { clock, kindCopy, remaining, snoozeTimer, stopTimer, useNow, useTimers, type RanchTimer, type TimerKind } from '../lib/timers'
+import { ArrowLeft, Pause, Play, Plus, RotateCcw, Square, X } from 'lucide-react'
+import { addMinute, clock, closeClock, isPaused, kindCopy, openClock, pauseTimer, remaining, restartTimer, resumeTimer, snoozeTimer, stopTimer, useClockView, useNow, useTimers, type RanchTimer, type TimerKind } from '../lib/timers'
 import { paper, stamp } from '../lib/motion'
 
 const kindGlyphs: Record<TimerKind, React.ReactNode> = {
@@ -27,22 +27,23 @@ export function TimerChip({ timer, now, onOpen, showRecipe = false }: { timer: R
   const [armed, setArmed] = useState(false)
   useEffect(() => { if (!armed) return; const id = setTimeout(() => setArmed(false), 2600); return () => clearTimeout(id) }, [armed])
   const ringing = Boolean(timer.firedAt)
+  const paused = isPaused(timer)
   const left = remaining(timer, now)
   const copy = kindCopy[timer.kind]
-  return <motion.div layout className={`timer-chip kind-${timer.kind}${ringing ? ' is-ringing' : ''}`} initial={{ y: 30, opacity: 0, rotate: -6 }} animate={{ y: 0, opacity: 1, rotate: 0 }} exit={{ scale: 0.6, opacity: 0 }} transition={paper}>
-    <button type="button" className="timer-chip-main" onClick={() => ringing ? stopTimer(timer.id) : onOpen?.(timer)} aria-label={ringing ? `${copy.title} Toque para desligar o alarme` : `${copy.label}, ${timer.recipeTitle}: faltam ${clock(left)}`}>
+  return <motion.div layout className={`timer-chip kind-${timer.kind}${ringing ? ' is-ringing' : ''}${paused ? ' is-paused' : ''}`} initial={{ y: 30, opacity: 0, rotate: -6 }} animate={{ y: 0, opacity: 1, rotate: 0 }} exit={{ scale: 0.6, opacity: 0 }} transition={paper}>
+    <button type="button" className="timer-chip-main" onClick={() => ringing ? stopTimer(timer.id) : onOpen ? onOpen(timer) : openClock(timer.id)} aria-label={ringing ? `${copy.title} Toque para desligar o alarme` : `${copy.label}, ${timer.recipeTitle}: faltam ${clock(left)}`}>
       <TimerFace left={left} total={timer.total}/>
-      <span className="timer-chip-copy"><small><KindIcon kind={timer.kind} size={16}/>{ringing ? 'Tocou! Desligar' : showRecipe ? timer.recipeTitle : `${copy.label} · passo ${timer.step}`}</small><strong>{ringing ? copy.label : clock(left)}</strong></span>
+      <span className="timer-chip-copy"><small><KindIcon kind={timer.kind} size={16}/>{ringing ? 'Tocou! Desligar' : `${paused ? 'Pausado · ' : ''}${showRecipe ? timer.recipeTitle : `${copy.label} · passo ${timer.step}`}`}</small><strong>{ringing ? copy.label : clock(left)}</strong></span>
     </button>
     {!ringing && <button type="button" className={`timer-chip-x${armed ? ' is-armed' : ''}`} onClick={() => armed ? stopTimer(timer.id) : setArmed(true)} aria-label={armed ? 'Confirmar: cancelar este relógio' : 'Cancelar relógio'}>{armed ? 'Cancelar?' : <X size={14}/>}</button>}
   </motion.div>
 }
 
 /** Relógios correndo fora do modo cozinha: ficam flutuando para não serem esquecidos. */
-export function TimerTray({ onOpen }: { onOpen: (timer: RanchTimer) => void }) {
+export function TimerTray() {
   const timers = useTimers()
   const now = useNow(timers.length > 0)
-  return <div className="timer-float" aria-live="polite"><AnimatePresence>{timers.map(timer => <TimerChip key={timer.id} timer={timer} now={now} onOpen={onOpen} showRecipe/>)}</AnimatePresence></div>
+  return <div className="timer-float" aria-live="polite"><AnimatePresence>{timers.map(timer => <TimerChip key={timer.id} timer={timer} now={now} showRecipe/>)}</AnimatePresence></div>
 }
 
 /** Cortina de alarme: cobre a tela quando um relógio termina, com o sino do rancho tocando. */
@@ -66,5 +67,74 @@ export function AlarmCurtain() {
       </div>
       {ringing.length > 1 && <small className="alarm-more">Mais {ringing.length - 1} relógio{ringing.length > 2 ? 's' : ''} tocando</small>}
     </motion.section>
+  </motion.div>}</AnimatePresence>, document.body)
+}
+
+/** Despertador de corda grande: anel de progresso no mostrador, ponteiro do tempo e ponteiro de segundos com tique. */
+function BigClock({ timer, now }: { timer: RanchTimer; now: number }) {
+  const left = remaining(timer, now)
+  const elapsed = Math.max(0, timer.total - left)
+  const ring = 2 * Math.PI * 74
+  return <svg className="big-clock" viewBox="0 0 240 262" aria-hidden="true">
+    <path className="big-clock-handle" d="M84 34Q120 2 156 34"/>
+    <g className="big-clock-bells"><path d="M34 62a26 26 0 0 1 44-28Z"/><path d="M206 62a26 26 0 0 0-44-28Z"/><path className="big-clock-hammer" d="M120 44V26"/><circle cx="120" cy="22" r="5"/></g>
+    <circle className="big-clock-body" cx="120" cy="142" r="100"/>
+    <circle className="big-clock-dial" cx="120" cy="142" r="86"/>
+    <circle className="big-clock-track" cx="120" cy="142" r="74"/>
+    <circle className="big-clock-progress" cx="120" cy="142" r="74" strokeDasharray={ring} strokeDashoffset={ring * (1 - left / Math.max(timer.total, 1))} transform="rotate(-90 120 142)"/>
+    {Array.from({ length: 60 }, (_, i) => <line key={i} className={i % 5 ? 'tick' : 'tick major'} x1="120" y1={i % 5 ? 62 : 60} x2="120" y2={i % 5 ? 66 : 70} transform={`rotate(${i * 6} 120 142)`}/>)}
+    <text className="big-clock-brand" x="120" y="178">Rancho</text>
+    <text className="big-clock-kind" x="120" y="199">{kindCopy[timer.kind].label}</text>
+    <line className="big-clock-hand" x1="120" y1="142" x2="120" y2="88" style={{ transform: `rotate(${360 * elapsed / Math.max(timer.total, 1)}deg)` }}/>
+    <line className="big-clock-second" x1="120" y1="156" x2="120" y2="78" style={{ transform: `rotate(${elapsed * 6}deg)` }}/>
+    <circle className="big-clock-cap" cx="120" cy="142" r="7"/>
+    <path className="big-clock-legs" d="M62 222 42 252M178 222l20 30"/>
+  </svg>
+}
+
+/** Tela inteira só do relógio: contagem gigante, pausar, retomar, reiniciar, mais um minuto e parar. */
+export function ClockScreen() {
+  const openId = useClockView()
+  const timers = useTimers()
+  const timer = timers.find(item => item.id === openId)
+  const now = useNow(Boolean(timer))
+  const [confirmStop, setConfirmStop] = useState(false)
+  useEffect(() => { setConfirmStop(false) }, [openId])
+  useEffect(() => { if (!confirmStop) return; const id = setTimeout(() => setConfirmStop(false), 3000); return () => clearTimeout(id) }, [confirmStop])
+  useEffect(() => { if (openId && !timer) closeClock() }, [openId, timer])
+  useEffect(() => {
+    if (!timer) return
+    const keys = (event: KeyboardEvent) => { if (event.key === 'Escape') closeClock(); else if (event.key === ' ') { event.preventDefault(); if (isPaused(timer)) resumeTimer(timer.id); else pauseTimer(timer.id) } }
+    addEventListener('keydown', keys); return () => removeEventListener('keydown', keys)
+  }, [timer])
+  const left = timer ? remaining(timer, now) : 0
+  const paused = timer ? isPaused(timer) : false
+  const copy = timer ? kindCopy[timer.kind] : undefined
+  const others = timers.filter(item => item.id !== openId)
+  return createPortal(<AnimatePresence>{timer && copy && <motion.div key="clock" className={`clock-screen kind-${timer.kind}${paused ? ' is-paused' : ''}${!paused && left <= 60 ? ' is-final' : ''}`} role="dialog" aria-modal="true" aria-label={`Relógio: ${copy.label}, ${timer.recipeTitle}`} initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 40, transition: { duration: 0.22 } }} transition={paper}>
+    <div className="clock-glow" aria-hidden="true"/>
+    <header className="clock-top">
+      <button type="button" className="cook-icon" onClick={closeClock} aria-label="Voltar"><ArrowLeft size={22}/></button>
+      <div className="cook-title"><small>Relógio da cozinha</small><strong>{timer.recipeTitle}</strong></div>
+      <span className="clock-kind-badge"><KindIcon kind={timer.kind} size={18}/>{copy.label}</span>
+    </header>
+    {others.length > 0 && <nav className="clock-others" aria-label="Outros relógios">{others.map(item => <button type="button" key={item.id} className={item.firedAt ? 'is-ringing' : ''} onClick={() => openClock(item.id)}><KindIcon kind={item.kind} size={14}/>{kindCopy[item.kind].label} · {item.firedAt ? 'tocou' : clock(remaining(item, now))}</button>)}</nav>}
+    <section className="clock-stage">
+      <motion.div className="clock-face-wrap" key={timer.id} initial={{ scale: 0.8, rotate: -8, opacity: 0 }} animate={{ scale: 1, rotate: 0, opacity: 1 }} transition={{ type: 'spring', stiffness: 180, damping: 14 }}>
+        <BigClock timer={timer} now={now}/>
+        <AnimatePresence>{paused && <motion.span className="rubber-stamp clock-paused" initial={{ opacity: 0, scale: 2, rotate: -26 }} animate={{ opacity: 1, scale: 1, rotate: -12 }} exit={{ opacity: 0, scale: 0.8 }} transition={stamp}>Pausado</motion.span>}</AnimatePresence>
+      </motion.div>
+      <div className="clock-digits"><span className="clock-time">{clock(left)}</span><small>{paused ? 'contagem pausada' : left <= 60 ? 'último minuto!' : `de ${clock(timer.total)} · passo ${timer.step}`}</small></div>
+      {timer.stepText && <p className="clock-step">“{timer.stepText}”</p>}
+    </section>
+    <footer className="clock-controls">
+      <button type="button" className="clock-round" onClick={() => restartTimer(timer.id)} aria-label="Reiniciar a contagem"><RotateCcw size={24}/><span>Reiniciar</span></button>
+      <motion.button type="button" className={`clock-main${paused ? ' is-play' : ''}`} onClick={() => paused ? resumeTimer(timer.id) : pauseTimer(timer.id)} aria-label={paused ? 'Continuar a contagem' : 'Pausar a contagem'} whileTap={{ scale: 0.92 }}>
+        <AnimatePresence mode="wait" initial={false}><motion.span key={paused ? 'play' : 'pause'} initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.5, opacity: 0 }} transition={{ duration: 0.15 }}>{paused ? <Play size={38} fill="currentColor"/> : <Pause size={38} fill="currentColor"/>}</motion.span></AnimatePresence>
+        <small>{paused ? 'Continuar' : 'Pausar'}</small>
+      </motion.button>
+      <button type="button" className={`clock-round stop${confirmStop ? ' is-armed' : ''}`} onClick={() => confirmStop ? stopTimer(timer.id) : setConfirmStop(true)} aria-label={confirmStop ? 'Confirmar: parar e apagar o relógio' : 'Parar o relógio'}><Square size={22} fill="currentColor"/><span>{confirmStop ? 'Confirmar' : 'Parar'}</span></button>
+      <button type="button" className="clock-add" onClick={() => addMinute(timer.id)}><Plus size={16}/> 1 minuto</button>
+    </footer>
   </motion.div>}</AnimatePresence>, document.body)
 }

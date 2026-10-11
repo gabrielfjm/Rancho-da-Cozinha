@@ -11,7 +11,7 @@ import { Photo } from './Photo'
 import { Skillet } from './Artwork'
 import { DishFx } from './DishFx'
 import { TimerChip } from './Timers'
-import { startTimer, useNow, useTimers } from '../lib/timers'
+import { clock, openClock, remaining, startTimer, useNow, useTimers } from '../lib/timers'
 import { primeAudio } from '../lib/alarm'
 
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -50,6 +50,7 @@ export function Kitchen({ recipe, catalog, onClose, onLog, onRate, onSave }: {
   const dragged = useRef(false)
   const step = steps[index]
   const uses = useMemo(() => usedIn(recipe, step.text), [recipe, step.text])
+  const stepTimer = timers.find(timer => timer.recipeId === recipe.id && timer.step === index + 1)
   const canFullscreen = typeof document !== 'undefined' && document.fullscreenEnabled
 
   function go(delta: number) { setStep(([current]) => { const next = Math.min(last, Math.max(0, current + delta)); return next === current ? [current, 0] : [next, delta] }) }
@@ -58,8 +59,8 @@ export function Kitchen({ recipe, catalog, onClose, onLog, onRate, onSave }: {
   function start(minutes: number) {
     if ('Notification' in window && Notification.permission === 'default') void Notification.requestPermission()
     primeAudio()
-    timersUsed.current += 1
-    startTimer({ recipeId: recipe.id, recipeTitle: recipe.title, step: index + 1, text: step.text, minutes })
+    if (!stepTimer) timersUsed.current += 1
+    openClock(startTimer({ recipeId: recipe.id, recipeTitle: recipe.title, step: index + 1, text: step.text, minutes }).id)
   }
   function toggleFullscreen() {
     if (document.fullscreenElement) void document.exitFullscreen().catch(() => {})
@@ -121,7 +122,7 @@ export function Kitchen({ recipe, catalog, onClose, onLog, onRate, onSave }: {
             <p className="cook-text">{step.text || 'Este passo ainda não tem descrição. Dá para completar no editor da receita.'}</p>
             {uses.length > 0 && <div className="cook-uses"><span>Neste passo</span>{uses.map(item => <em key={item.id}><b>{prettyAmount(item.amount)}{item.amount !== null ? ` ${item.unit}` : ''}</b> {item.name}</em>)}</div>}
             {step.photo && <Photo value={step.photo} alt={`Passo ${index + 1}`} className="cook-photo"/>}
-            {step.timerMinutes ? <button type="button" className="cook-timer" onClick={() => start(step.timerMinutes!)}><ClockIcon/>Dar corda no relógio · {step.timerMinutes} min</button> : null}
+            {step.timerMinutes ? <button type="button" className={`cook-timer${stepTimer ? ' is-running' : ''}`} onClick={() => stepTimer ? openClock(stepTimer.id) : start(step.timerMinutes!)}><ClockIcon/>{stepTimer ? <>{stepTimer.firedAt ? 'O relógio tocou' : `Ver o relógio · ${clock(remaining(stepTimer, now))}`}</> : <>Dar corda no relógio · {step.timerMinutes} min</>}</button> : null}
             {index < last
               ? <p className="cook-next"><span>Depois</span>{steps[index + 1].text}</p>
               : <p className="cook-next is-last"><span>Último passo</span>Depois disso é só servir.</p>}

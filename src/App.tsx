@@ -28,8 +28,8 @@ import { WeatherTicket } from './components/WeatherTicket'
 import { Footer } from './components/Footer'
 import { Dock } from './components/Dock'
 import { Kitchen } from './components/Kitchen'
-import { AlarmCurtain, TimerTray } from './components/Timers'
-import { snoozeTimer, startTimerEngine, stopTimer, type RanchTimer } from './lib/timers'
+import { AlarmCurtain, ClockScreen, TimerTray } from './components/Timers'
+import { openClock, snoozeTimer, startTimerEngine, stopTimer } from './lib/timers'
 
 type Page = 'home' | 'notebook' | 'pantry' | 'shopping' | 'settings' | 'auth' | 'form' | 'recipe' | 'kitchen'
 const emptyState: LocalState = { recipes: [], customIngredients: [], collections: [], shopping: [], cookLogs: [] }
@@ -127,14 +127,11 @@ export default function App() {
       if (data?.type !== 'rancho-relogio' || !data.id) return
       if (data.action === 'stop') stopTimer(data.id)
       else if (data.action === 'snooze') snoozeTimer(data.id)
+      else openClock(data.id)
     }
     navigator.serviceWorker?.addEventListener('message', fromNotification)
     return () => navigator.serviceWorker?.removeEventListener('message', fromNotification)
   }, [])
-  function openTimer(timer: RanchTimer) {
-    if (!state.recipes.some(recipe => recipe.id === timer.recipeId) && !brazilianRecipes.some(recipe => recipe.id === timer.recipeId)) return
-    setSelectedId(timer.recipeId); go('kitchen', 'kitchen')
-  }
 
   function notify(text: string, tone: Note['tone'] = 'ok') {
     const id = uid()
@@ -248,11 +245,11 @@ export default function App() {
             </motion.div>
           </AnimatePresence>
           {page !== 'kitchen' && <Footer navigate={target => go(target)} newRecipe={newRecipe}/>}
-          {page !== 'kitchen' && <TimerTray onOpen={openTimer}/>}
+          {page !== 'kitchen' && <TimerTray/>}
           <AnimatePresence>{phone && page !== 'kitchen' && page !== 'form' && <Dock key="dock" active={dockTarget} navigate={target => go(target)} newRecipe={newRecipe}/>}</AnimatePresence>
         </motion.div>}
     </AnimatePresence>
-    {authReady && session && <AlarmCurtain/>}
+    {authReady && session && <><ClockScreen/><AlarmCurtain/></>}
     <TicketStack notes={notes} dismiss={id => setNotes(current => current.filter(note => note.id !== id))}/>
   </MotionConfig>
 }
