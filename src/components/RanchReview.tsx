@@ -1,8 +1,9 @@
-import { useId, useState } from 'react'
-import { motion } from 'framer-motion'
+import { useEffect, useId, useRef, useState } from 'react'
+import { animate, motion, useInView, useMotionValue, useReducedMotion } from 'framer-motion'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import type { Recipe } from '../types'
 import { ranchReviews, ribbonFor, scoreLabel } from '../data/ranchReviews'
-import { inView, ink, pendulum, rise, stamp } from '../lib/motion'
+import { inView, ink, paper, pendulum, rise, stamp } from '../lib/motion'
 import { Photo } from './Photo'
 
 // Estrela de traço levemente torto, como feita à mão com caneta-tinteiro.
@@ -76,22 +77,92 @@ export function ReviewCard({ recipe }: { recipe: Recipe }) {
 }
 
 const sway = [-2.6, 1.8, -1.2, 2.4, -1.8]
-/** Varal de provas: as fichas julgadas penduradas com prendedor de madeira. */
+const GAP = 22
+const MIN_CARD = 230
+/**
+ * Varal de provas: as fichas correm pelo varal como roupa no arame.
+ * Passa sozinho, para quando a pessoa mexe, aceita arrastar com o dedo e setas de placa de madeira.
+ */
 export function ReviewLine({ recipes, onOpen }: { recipes: Recipe[]; onOpen: (recipe: Recipe) => void }) {
   const ranked = recipes.filter(recipe => ranchReviews[recipe.id]).sort((a, b) => ranchReviews[b.id].score - ranchReviews[a.id].score)
-  return <div className="clothesline"><div className="clothesline-track" tabIndex={0} aria-label="Avaliações das receitas recomendadas pelo Rancho">
-    {ranked.map((recipe, index) => {
-      const review = ranchReviews[recipe.id]
-      const rest = sway[index % sway.length]
-      return <motion.article key={recipe.id} className="pinned-note" style={{ originY: 0 }} initial={{ y: -70, opacity: 0, rotate: rest * 4 }} whileInView={{ y: 0, opacity: 1, rotate: rest }} viewport={{ once: true, amount: 0.35 }} transition={{ ...pendulum, delay: (index % 4) * 0.09 }} whileHover={{ rotate: 0, y: 5, transition: { duration: 0.35, ease: ink } }}>
-        <span className="clothespin" aria-hidden="true"/>
-        <div className="note-top"><Photo value={recipe.cover} alt="" className="note-photo"/><Rosette score={review.score} size={58}/></div>
-        <span className="eyebrow">{review.ribbon}</span>
-        <h3>{recipe.title}</h3>
-        <HandStars value={review.score} size={14}/>
-        <p className="note-verdict">“{review.verdict}”</p>
-        <button type="button" className="text-button" onClick={() => onOpen(recipe)}>Ler a ficha de prova →</button>
-      </motion.article>
-    })}
-  </div></div>
+  const region = useRef<HTMLDivElement>(null)
+  const frame = useRef<HTMLDivElement>(null)
+  const seen = useInView(region, { once: true, amount: 0.3 })
+  const onScreen = useInView(region, { amount: 0.3 })
+  const reduce = useReducedMotion()
+  const x = useMotionValue(0)
+  const [width, setWidth] = useState(0)
+  const [index, setIndex] = useState(0)
+  const [swing, setSwing] = useState(0)
+  const [hold, setHold] = useState(false)
+  const [dropped, setDropped] = useState(false)
+  const dragged = useRef(false)
+  const resumeAt = useRef(0)
+  const perView = Math.max(1, Math.floor((width + GAP) / (MIN_CARD + GAP)))
+  const card = width ? (width - GAP * (perView - 1)) / perView : 250
+  const step = card + GAP
+  const last = Math.max(0, ranked.length - perView)
+  const current = Math.min(index, last)
+
+  useEffect(() => {
+    const node = frame.current; if (!node) return
+    const observer = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width))
+    observer.observe(node); return () => observer.disconnect()
+  }, [])
+  useEffect(() => { x.set(-current * step) }, [step]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!seen) return; const timer = setTimeout(() => setDropped(true), 1300); return () => clearTimeout(timer) }, [seen])
+  useEffect(() => { if (!swing) return; const timer = setTimeout(() => setSwing(0), 220); return () => clearTimeout(timer) }, [swing])
+
+  function goTo(target: number, byPerson = true) {
+    const next = target > last ? 0 : target < 0 ? last : target
+    setSwing(Math.sign(next - current)); setIndex(next)
+    animate(x, -next * step, reduce ? { duration: 0 } : paper)
+    if (byPerson) resumeAt.current = Date.now() + 9000
+  }
+  useEffect(() => {
+    if (reduce || hold || !onScreen || last === 0) return
+    const timer = setInterval(() => { if (Date.now() >= resumeAt.current && !document.hidden) goTo(current + 1, false) }, 4800)
+    return () => clearInterval(timer)
+  }, [reduce, hold, onScreen, last, current, step]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const range = perView > 1 ? `${current + 1}–${Math.min(current + perView, ranked.length)} de ${ranked.length}` : `${current + 1} de ${ranked.length}`
+  return <div className="clothesline" ref={region} role="region" aria-roledescription="carrossel" aria-label="Avaliações das receitas recomendadas pelo Rancho"
+    onMouseEnter={() => setHold(true)} onMouseLeave={() => setHold(false)} onFocus={() => setHold(true)} onBlur={() => setHold(false)}
+    onKeyDown={event => { if (event.key === 'ArrowRight') goTo(current + 1); else if (event.key === 'ArrowLeft') goTo(current - 1) }}>
+    <button type="button" className="line-arrow prev" aria-label="Fichas anteriores" onClick={() => goTo(current - 1)}><span className="line-arrow-sign"><ChevronLeft size={26} strokeWidth={2.6}/></span></button>
+    <div className="clothesline-frame" ref={frame}>
+      <motion.div className="clothesline-track" style={{ x, gap: GAP }} drag={last > 0 ? 'x' : false} dragConstraints={{ left: -last * step, right: 0 }} dragElastic={0.18} dragMomentum={false}
+        onPointerDown={() => { dragged.current = false; resumeAt.current = Date.now() + 9000 }}
+        onDragStart={() => { dragged.current = true; setHold(true) }}
+        onDragEnd={(_, info) => {
+          setHold(false)
+          const jump = Math.max(1, Math.round(Math.abs(info.offset.x) / step))
+          const direction = info.offset.x < -40 || info.velocity.x < -350 ? 1 : info.offset.x > 40 || info.velocity.x > 350 ? -1 : 0
+          goTo(Math.min(last, Math.max(0, current + direction * jump)))
+        }}>
+        {ranked.map((recipe, i) => {
+          const review = ranchReviews[recipe.id]
+          const rest = sway[i % sway.length] * (perView === 1 ? 0.35 : 1)
+          const shown = i >= current && i < current + perView
+          return <motion.button type="button" key={recipe.id} className="pinned-note" aria-roledescription="slide" aria-hidden={!shown} tabIndex={shown ? 0 : -1} style={{ width: card, originY: 0 }}
+            initial={{ y: -70, opacity: 0, rotate: rest * 4 }} animate={seen ? { y: 0, opacity: 1, rotate: rest - swing * 6 } : undefined} transition={{ ...pendulum, delay: dropped ? 0 : (i % 4) * 0.09 }}
+            whileHover={{ rotate: 0, y: 5, transition: { duration: 0.35, ease: ink } }} whileTap={{ scale: 0.98 }}
+            onClick={() => { if (!dragged.current) onOpen(recipe) }}>
+            <span className="clothespin" aria-hidden="true"/>
+            <span className="note-top"><Photo value={recipe.cover} alt="" className="note-photo"/><Rosette score={review.score} size={58}/></span>
+            <span className="eyebrow">{review.ribbon}</span>
+            <h3>{recipe.title}</h3>
+            <HandStars value={review.score} size={14}/>
+            <span className="note-verdict">“{review.verdict}”</span>
+            <span className="note-cta">Abrir a receita →</span>
+          </motion.button>
+        })}
+      </motion.div>
+    </div>
+    <button type="button" className="line-arrow next" aria-label="Próximas fichas" onClick={() => goTo(current + 1)}><span className="line-arrow-sign"><ChevronRight size={26} strokeWidth={2.6}/></span></button>
+    <div className="line-pager">
+      <div className="line-pins">{Array.from({ length: last + 1 }, (_, page) => <button type="button" key={page} className={page === current ? 'is-on' : ''} aria-label={`Ir para a ficha ${page + 1}`} aria-current={page === current} onClick={() => goTo(page)}><i/></button>)}</div>
+      <span>{range}</span>
+    </div>
+  </div>
 }
