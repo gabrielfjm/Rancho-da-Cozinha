@@ -10,10 +10,9 @@ create table if not exists public.ingredients (
   default_unit text not null,
   grams_per_unit jsonb not null default '{}'::jsonb,
   nutrition jsonb,
-  source text not null check (source in ('TACO', 'Curada')),
-  search_text text generated always as (lower(name || ' ' || array_to_string(aliases, ' '))) stored
+  source text not null check (source in ('TACO', 'Curada'))
 );
-create index if not exists ingredients_search_trgm on public.ingredients using gin (search_text gin_trgm_ops);
+create index if not exists ingredients_search_trgm on public.ingredients using gin (lower(name) gin_trgm_ops);
 alter table public.ingredients enable row level security;
 create policy "Catálogo público de ingredientes" on public.ingredients for select using (true);
 
