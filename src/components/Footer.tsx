@@ -12,6 +12,9 @@ const sayings = [
   'Cada um puxa a brasa para a sua sardinha.'
 ]
 
+// Bando pequeno em V solto: posição relativa e atraso da batida de asa.
+const flock: [number, number, number][] = [[0, 0, 0], [-20, -9, 0.17], [-38, 5, 0.31]]
+
 /** Horizonte da fazenda que sobe do rodapé: morros, cata-vento girando, celeiro com a janela acesa, silo e cerca. */
 function Landscape() {
   const fence = (from: number, to: number, top: number) => Array.from({ length: Math.floor((to - from) / 22) + 1 }, (_, i) => <rect key={i} x={from + i * 22} y={top} width="3.5" height="30" rx="1"/>)
@@ -29,7 +32,7 @@ function Landscape() {
     <g className="windmill-blades">{Array.from({ length: 6 }, (_, i) => <path key={i} d="M622 18l-3-21h6z" transform={`rotate(${i * 60} 622 18)`}/>)}<circle cx="622" cy="18" r="3.5"/></g>
     <rect className="barn-window" x="768" y="24" width="12" height="11" rx="1"/>
     <path className="barn-door" d="M762 72V50h24v22M762 50l24 22M786 50l-24 22"/>
-    <g className="birds"><path d="M0 0c3-3 6-3 8 0 2-3 5-3 8 0"/><path d="M22 -9c2-2 4-2 6 0 2-2 4-2 6 0"/></g>
+    <g className="flock">{flock.map(([x, y, delay], i) => <g key={i} transform={`translate(${x} ${y})`}><g className="bird" style={{ animationDelay: `${delay}s` }}><path className="wing left" style={{ animationDelay: `${delay}s` }} d="M0 0q-4.5-5.5-10-3"/><path className="wing right" style={{ animationDelay: `${delay}s` }} d="M0 0q4.5-5.5 10-3"/></g></g>)}</g>
   </svg>
 }
 

@@ -248,6 +248,13 @@ function Header({ page, navigate, menu, setMenu, session, isAdmin, syncStatus, p
   </header></>
 }
 
+/** Maço de fichas com o número carimbado: contador das seções da casa. */
+function Tally({ count, label }: { count: number; label: string }) {
+  return <motion.span className="tally" initial={{ opacity: 0, rotate: 6, y: -8 }} whileInView={{ opacity: 1, rotate: -2.5, y: 0 }} viewport={{ once: true }} transition={paper} whileHover={{ rotate: 0, y: -2 }}>
+    <b><CountUp value={count}/></b><small>{label}</small>
+  </motion.span>
+}
+
 function CatalogCard({ item, onOpen }: { item: BrazilianRecipe; onOpen: () => void }) {
   const fx = dishMotion(item)
   return <motion.article className="catalog-card" variants={rise} whileHover={{ y: -4 }}>
@@ -315,7 +322,7 @@ function HomePage({ recipes, openRecipe, saveSuggestion, newRecipe, navigate }: 
               <span className="eyebrow">{recommendation.regions.join(' · ')}</span><h3>{recommendation.title}</h3><p>{recommendation.description}</p>
               {review && <p className="climate-verdict">“{review.verdict}”<small>— cozinha de teste do Rancho</small></p>}
               <div className="recommendation-meta"><span><Flame size={16}/>{calorieLabel(recommendation)}</span><span>{recommendation.prepMinutes + recommendation.cookMinutes} min</span><span>rende {recommendation.servings}</span></div>
-              <div className="recommendation-actions"><button className="button" onClick={event => { event.stopPropagation(); openRecipe(recommendation) }}><BookOpen size={17}/> Abrir a receita</button><span onClick={event => event.stopPropagation()}><BusyButton className="text-button" busyLabel="Copiando a ficha…" onClick={() => saveSuggestion(recommendation)}><Plus size={17}/> Guardar no meu caderno</BusyButton></span></div>
+              <div className="recommendation-actions"><button className="button" onClick={event => { event.stopPropagation(); openRecipe(recommendation) }}><BookOpen size={17}/> Abrir a receita</button><span onClick={event => event.stopPropagation()}><BusyButton className="button button-paper" busyLabel="Copiando a ficha…" doneLabel="No seu caderno" onClick={() => saveSuggestion(recommendation)}><Plus size={17}/> Guardar no meu caderno</BusyButton></span></div>
             </div>
           </motion.article>
         </AnimatePresence>
@@ -328,9 +335,9 @@ function HomePage({ recipes, openRecipe, saveSuggestion, newRecipe, navigate }: 
       </div>
     </section>
 
-    <section className="home-section tasting-section"><div className="section-row"><div><span className="eyebrow">Provado e aprovado</span><h2>Varal de provas do Rancho</h2><p>{momentSentence(moment)}: as primeiras fichas do varal combinam com agora.</p></div><span className="catalog-count">{Object.keys(ranchReviews).length} fichas julgadas</span></div><ReviewLine picks={picks} onOpen={openRecipe}/></section>
+    <section className="home-section tasting-section"><div className="section-row"><div><span className="eyebrow">Provado e aprovado</span><h2>Varal de provas do Rancho</h2><p>{momentSentence(moment)}: as primeiras fichas do varal combinam com agora.</p></div><Tally count={Object.keys(ranchReviews).length} label="fichas julgadas"/></div><ReviewLine picks={picks} onOpen={openRecipe}/></section>
 
-    <section className="home-section catalog-section"><div className="section-row"><div><span className="eyebrow">Base brasileira do Rancho</span><h2>Sabores de várias regiões</h2><p>Receitas selecionadas e prontas para entrar no seu caderno.</p></div><span className="catalog-count">{brazilianRecipes.length} receitas</span></div>
+    <section className="home-section catalog-section"><div className="section-row"><div><span className="eyebrow">Base brasileira do Rancho</span><h2>Sabores de várias regiões</h2><p>Receitas selecionadas e prontas para entrar no seu caderno.</p></div><Tally count={brazilianRecipes.length} label="receitas na base"/></div>
       <motion.div className="catalog-grid" {...inView} variants={stack(0.07)}>{brazilianRecipes.filter(item => item.id !== picks[0].recipe.id).slice(0, 6).map(item => <CatalogCard key={item.id} item={item} onOpen={() => openRecipe(item)}/>)}</motion.div>
     </section>
 
