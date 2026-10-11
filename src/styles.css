@@ -634,3 +634,25 @@ body{background-color:var(--cream);background-image:linear-gradient(rgba(255,255
 .tally small{max-width:92px;font-family:Caveat;font-size:20px;line-height:1;color:var(--leather)}
 @media(max-width:650px){.section-row .tally{align-self:flex-start;margin-top:4px}}
 .recommendation-actions>span{display:contents}
+
+/* ===== Barra de navegação do celular ===== */
+.dock{display:none}
+@media(max-width:700px){
+  .menu-button,.site-header nav{display:none!important}
+  .dock{position:fixed;z-index:60;left:0;right:0;bottom:0;display:grid;grid-template-columns:repeat(5,1fr);align-items:end;padding:7px 6px calc(6px + env(safe-area-inset-bottom,0px));background:#27170f;border-top:1px solid #6f4a33;box-shadow:0 -10px 26px rgba(31,16,9,.28)}
+  .dock:before{content:"";position:absolute;left:0;right:0;bottom:100%;height:5px;background-color:#e3c79e;background-image:linear-gradient(90deg,rgba(117,27,20,.75) 50%,transparent 50%),linear-gradient(rgba(117,27,20,.75) 50%,transparent 50%);background-size:12px 12px}
+  .dock:after{content:"";position:absolute;left:10px;right:10px;top:4px;border-top:1px dashed rgba(233,217,188,.2);pointer-events:none}
+  .dock-item,.dock-new{position:relative;display:grid;justify-items:center;gap:2px;min-height:56px;padding:6px 2px 4px;border:0;background:none;color:#cbb593;font:600 11px "Zilla Slab";letter-spacing:.03em;-webkit-tap-highlight-color:transparent}
+  .dock-item svg,.dock-item span{position:relative;z-index:1}
+  .dock-item.is-on{color:#f4d184}
+  .dock-ink{position:absolute;inset:2px 3px 0;z-index:0;border:1px solid rgba(244,209,132,.35);border-radius:10px;background:rgba(244,209,132,.12)}
+  .dock-item.is-on:after{content:"";position:absolute;bottom:-1px;left:50%;width:16px;height:3px;margin-left:-8px;border-radius:2px;background:#c4432f}
+  .dock-new{color:#f4d184}
+  .dock-new-badge{position:relative;display:grid;place-items:center;width:56px;height:56px;margin-top:-30px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#b13a2a,#8f261d 70%);color:#fff6e4;box-shadow:0 0 0 4px #27170f,0 0 0 5px #8a5a33,0 8px 16px rgba(0,0,0,.35)}
+  .dock-new-badge:before{content:"";position:absolute;inset:5px;border:1px dashed rgba(255,240,215,.6);border-radius:50%}
+  .footer-links{display:none}
+  body:has(.dock) .site-footer{padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))}
+  body:has(.dock) .ticket-stack{bottom:calc(92px + env(safe-area-inset-bottom,0px))}
+  .profile-actions .button{width:100%}
+}
+@media(max-width:650px){.site-footer .footer-base{align-items:flex-start;text-align:left}}

@@ -26,6 +26,7 @@ import { Pins, SignArrow, useRotation } from './components/Carousel'
 import { FavoriteToggle, HatPicker, PaperSelect, useMedia } from './components/Filters'
 import { WeatherTicket } from './components/WeatherTicket'
 import { Footer } from './components/Footer'
+import { Dock } from './components/Dock'
 
 type Page = 'home' | 'notebook' | 'pantry' | 'shopping' | 'settings' | 'auth' | 'form' | 'recipe' | 'kitchen'
 const emptyState: LocalState = { recipes: [], customIngredients: [], collections: [], shopping: [], cookLogs: [] }
@@ -59,6 +60,8 @@ export default function App() {
   const selectedFromCatalog = brazilianRecipes.find(recipe => recipe.id === selectedId)
   const selected = selectedFromNotebook ?? selectedFromCatalog
   const isAdmin = session?.user.email?.toLowerCase() === ADMIN_EMAIL
+  const phone = useMedia('(max-width: 700px)')
+  const dockTarget = page === 'recipe' ? (selectedFromNotebook ? 'notebook' : 'home') : (['home', 'notebook', 'pantry', 'shopping'] as const).find(target => target === page)
 
   function adoptScope(next: string) { scopeRef.current = next; setScope(next) }
   async function refresh(nextScope: string) { setState(await loadState(nextScope)) }
@@ -218,7 +221,7 @@ export default function App() {
               {page === 'pantry' && <Pantry recipes={state.recipes} ingredients={ingredients} openRecipe={openRecipe}/>}
               {page === 'shopping' && <Shopping items={state.shopping} onToggle={toggleShopping} onClear={clearShopping}/>}
               {page === 'settings' && isAdmin && <Settings state={state} scope={scope} onImport={importBackup} onInvalid={() => notify('Este arquivo não parece ser um backup do Rancho da Cozinha.', 'warn')} configured={configured}/>}
-              {page === 'auth' && <Auth session={session} onDone={() => go('home')}/>}
+              {page === 'auth' && <Auth session={session} onDone={() => go('home')} onSettings={isAdmin ? () => go('settings') : undefined}/>}
               {page === 'form' && editing && <RecipeForm recipe={editing} ingredients={ingredients} scope={scope} onDraft={saveDraft} onSave={saveRecipe} onSaved={recipeSaved} onCancel={() => go(editing.title ? 'recipe' : 'notebook')} onIngredientCreate={addPersonal}/>}
               {page === 'recipe' && selected && <RecipeView recipe={selected} catalog={Boolean(selectedFromCatalog && !selectedFromNotebook)} logs={state.cookLogs.filter(log => log.recipeId === selected.id)} onBack={() => go(selectedFromCatalog && !selectedFromNotebook ? 'home' : 'notebook')} onEdit={() => { setEditing(selected); go('form') }} onDelete={() => removeRecipe(selected)} onFavorite={() => toggleFavorite(selected)} onRate={rating => rateRecipe(selected, rating)} onShare={() => shareRecipe(selected)} onSaveToNotebook={() => adoptRecipe(selected)} onKitchen={() => go('kitchen', 'kitchen')} onShopping={() => toShopping(selected)} onLog={addLog}/>}
               {page === 'recipe' && !selected && <main className="page"><EmptyNotebook newRecipe={newRecipe}/></main>}
@@ -226,6 +229,7 @@ export default function App() {
             </motion.div>
           </AnimatePresence>
           <Footer navigate={target => go(target)} newRecipe={newRecipe}/>
+          <AnimatePresence>{phone && page !== 'kitchen' && page !== 'form' && <Dock key="dock" active={dockTarget} navigate={target => go(target)} newRecipe={newRecipe}/>}</AnimatePresence>
         </motion.div>}
     </AnimatePresence>
     <TicketStack notes={notes} dismiss={id => setNotes(current => current.filter(note => note.id !== id))}/>
@@ -460,7 +464,7 @@ function Settings({ state, scope, onImport, onInvalid, configured }: { state: Lo
   </main>
 }
 
-function ProfilePage({ session, onDone }: { session: Session; onDone: () => void }) {
+function ProfilePage({ session, onDone, onSettings }: { session: Session; onDone: () => void; onSettings?: () => void }) {
   const metadata = session.user.user_metadata ?? {}
   const [name, setName] = useState(String(metadata.full_name || ''))
   const [email, setEmail] = useState(session.user.email || '')
@@ -489,11 +493,11 @@ function ProfilePage({ session, onDone }: { session: Session; onDone: () => void
   return <main className="page profile-page"><motion.section className="profile-card profile-editor" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={paper}><div className="profile-side"><div className={`profile-photo${saving ? ' is-busy' : ''}`}><ProfileAvatar session={session} className="profile-avatar"/><label className="photo-action"><Camera size={18}/> Trocar foto<input type="file" accept="image/*" disabled={saving} onChange={event => event.target.files?.[0] && void photo(event.target.files[0])}/></label></div><h2>{name || 'Seu perfil'}</h2><p>{session.user.email}</p><div className="profile-trust"><ShieldCheck size={18}/><span>Conta protegida e conteúdo particular</span></div></div>
     <form className="profile-form" onSubmit={event => void save(event)}><span className="eyebrow">Dados cadastrais</span><h1>Seu lugar à mesa</h1><p>Atualize seu nome, e-mail e foto. As recomendações usam a localização atual do aparelho.</p><div className="form-grid"><label>Nome completo<input value={name} onChange={event => setName(event.target.value)} placeholder="Como devemos chamar você?"/></label><label>E-mail<input type="email" required value={email} onChange={event => setEmail(event.target.value)}/></label></div>
       <AnimatePresence mode="wait">{message && <motion.p key={message} className="profile-message" role="status" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>{message}</motion.p>}</AnimatePresence>
-      <div className="profile-actions"><button className="button" type="submit" disabled={saving} aria-busy={saving}>{saving ? <><Stir/> Salvando…</> : 'Salvar alterações'}</button><button className="button button-outline" type="button" onClick={async () => { await supabase?.auth.signOut(); onDone() }}><LogOut size={18}/> Sair da conta</button></div></form>
+      <div className="profile-actions"><button className="button" type="submit" disabled={saving} aria-busy={saving}>{saving ? <><Stir/> Salvando…</> : 'Salvar alterações'}</button><button className="button button-outline" type="button" onClick={async () => { await supabase?.auth.signOut(); onDone() }}><LogOut size={18}/> Sair da conta</button>{onSettings && <button className="button button-paper" type="button" onClick={onSettings}><Archive size={18}/> Ajustes e backup</button>}</div></form>
   </motion.section></main>
 }
 
-function Auth({ session, onDone }: { session: Session | null; onDone: () => void }) {
+function Auth({ session, onDone, onSettings }: { session: Session | null; onDone: () => void; onSettings?: () => void }) {
   const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [mode, setMode] = useState<'login' | 'signup'>('login'); const [message, setMessage] = useState('')
   const [busy, run] = useBusy(); const [leaving, setLeaving] = useState(false)
   function submit(event: React.FormEvent) {
@@ -507,7 +511,7 @@ function Auth({ session, onDone }: { session: Session | null; onDone: () => void
     })
   }
   async function google() { if (!supabase) { setMessage('Configure o Supabase no arquivo .env para entrar.'); return } setLeaving(true); const { error } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin } }); if (error) { setLeaving(false); setMessage(error.message) } }
-  if (session) return <ProfilePage session={session} onDone={onDone}/>
+  if (session) return <ProfilePage session={session} onDone={onDone} onSettings={onSettings}/>
   return <motion.main className="auth-shell" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.4 }}>
     <section className="auth-visual"><img src="/assets/login-ranch-kitchen.jpg" alt="Caderno aberto em uma cozinha de rancho iluminada por lampião"/><div className="auth-visual-copy"><div className="auth-brand"><div><strong>Rancho da Cozinha</strong><small>receitas da casa desde sempre</small></div></div><motion.blockquote initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, ease: ink, delay: 0.3 }}>“Toda casa tem receitas que merecem atravessar gerações.”</motion.blockquote><span>Seu caderno particular, sempre à mão.</span></div></section>
     <section className="auth-panel"><motion.form className="auth-card" onSubmit={submit} initial="hidden" animate="shown" variants={stack(0.06)}>
