@@ -27,6 +27,7 @@ import { FavoriteToggle, HatPicker, PaperSelect, useMedia } from './components/F
 import { WeatherTicket } from './components/WeatherTicket'
 import { Footer } from './components/Footer'
 import { Dock } from './components/Dock'
+import { Kitchen } from './components/Kitchen'
 
 type Page = 'home' | 'notebook' | 'pantry' | 'shopping' | 'settings' | 'auth' | 'form' | 'recipe' | 'kitchen'
 const emptyState: LocalState = { recipes: [], customIngredients: [], collections: [], shopping: [], cookLogs: [] }
@@ -213,7 +214,7 @@ export default function App() {
       {!authReady ? <LoadingScreen key="loading"/>
         : !session ? <Auth key="auth" session={null} onDone={() => setPage('home')}/>
         : <motion.div key="app" className="app-shell" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4 }}>
-          <Header page={page} navigate={target => go(target)} menu={menu} setMenu={setMenu} session={session} isAdmin={isAdmin} syncStatus={syncStatus} pending={pending} onSync={() => void runSync()}/>
+          {page !== 'kitchen' && <Header page={page} navigate={target => go(target)} menu={menu} setMenu={setMenu} session={session} isAdmin={isAdmin} syncStatus={syncStatus} pending={pending} onSync={() => void runSync()}/>}
           <AnimatePresence mode="wait" custom={pageMotion} onExitComplete={() => scrollTo({ top: 0 })}>
             <motion.div key={`${page}-${selectedId ?? ''}`} className="page-sheet" custom={pageMotion} variants={pageVariants} initial="enter" animate="center" exit="exit" style={{ transformOrigin: '50% 0' }}>
               {page === 'home' && <HomePage recipes={state.recipes} openRecipe={openRecipe} saveSuggestion={adoptRecipe} newRecipe={newRecipe} navigate={target => go(target)}/>}
@@ -225,10 +226,10 @@ export default function App() {
               {page === 'form' && editing && <RecipeForm recipe={editing} ingredients={ingredients} scope={scope} onDraft={saveDraft} onSave={saveRecipe} onSaved={recipeSaved} onCancel={() => go(editing.title ? 'recipe' : 'notebook')} onIngredientCreate={addPersonal}/>}
               {page === 'recipe' && selected && <RecipeView recipe={selected} catalog={Boolean(selectedFromCatalog && !selectedFromNotebook)} logs={state.cookLogs.filter(log => log.recipeId === selected.id)} onBack={() => go(selectedFromCatalog && !selectedFromNotebook ? 'home' : 'notebook')} onEdit={() => { setEditing(selected); go('form') }} onDelete={() => removeRecipe(selected)} onFavorite={() => toggleFavorite(selected)} onRate={rating => rateRecipe(selected, rating)} onShare={() => shareRecipe(selected)} onSaveToNotebook={() => adoptRecipe(selected)} onKitchen={() => go('kitchen', 'kitchen')} onShopping={() => toShopping(selected)} onLog={addLog}/>}
               {page === 'recipe' && !selected && <main className="page"><EmptyNotebook newRecipe={newRecipe}/></main>}
-              {page === 'kitchen' && selected && <Kitchen recipe={selected} onClose={() => go('recipe', 'open')}/>}
+              {page === 'kitchen' && selected && <Kitchen recipe={selected} catalog={Boolean(selectedFromCatalog && !selectedFromNotebook)} onClose={() => go('recipe', 'open')} onLog={addLog} onRate={rating => rateRecipe(selected, rating)} onSave={() => adoptRecipe(selected)}/>}
             </motion.div>
           </AnimatePresence>
-          <Footer navigate={target => go(target)} newRecipe={newRecipe}/>
+          {page !== 'kitchen' && <Footer navigate={target => go(target)} newRecipe={newRecipe}/>}
           <AnimatePresence>{phone && page !== 'kitchen' && page !== 'form' && <Dock key="dock" active={dockTarget} navigate={target => go(target)} newRecipe={newRecipe}/>}</AnimatePresence>
         </motion.div>}
     </AnimatePresence>
@@ -541,64 +542,3 @@ function LoadingScreen() {
     <AnimatePresence mode="wait"><motion.p key={line} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>{loadingLines[line]}</motion.p></AnimatePresence>
   </motion.main>
 }
-
-
-type KitchenTimer = { id: string; label: string; total: number; left: number }
-// Campainha de relógio de corda: três toques curtos, sem arquivo de áudio.
-function ring(label: string) {
-  try {
-    const context = new AudioContext(); const now = context.currentTime
-    ;[0, 0.28, 0.56].forEach((offset, index) => {
-      const oscillator = context.createOscillator(); const gain = context.createGain()
-      oscillator.type = 'triangle'; oscillator.frequency.value = index === 1 ? 1320 : 990
-      gain.gain.setValueAtTime(0.0001, now + offset); gain.gain.exponentialRampToValueAtTime(0.25, now + offset + 0.02); gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.25)
-      oscillator.connect(gain).connect(context.destination); oscillator.start(now + offset); oscillator.stop(now + offset + 0.26)
-    })
-    setTimeout(() => void context.close(), 1200)
-  } catch { /* sem áudio disponível */ }
-  navigator.vibrate?.([220, 100, 220])
-  if ('Notification' in window && Notification.permission === 'granted' && document.hidden) new Notification('Rancho da Cozinha', { body: `${label}: o relógio tocou.`, icon: '/icon-192.png' })
-}
-const stepCard = {
-  enter: (dir: number) => ({ opacity: 0, x: dir * 90, rotate: dir * 2.5 }),
-  center: { opacity: 1, x: 0, rotate: 0, transition: paper },
-  exit: (dir: number) => ({ opacity: 0, x: dir * -90, rotate: dir * -2.5, transition: { duration: 0.18 } })
-}
-function Kitchen({ recipe, onClose }: { recipe: Recipe; onClose: () => void }) {
-  const [[index, dir], setStep] = useState<[number, number]>([0, 0]); const [drawer, setDrawer] = useState(false); const [timers, setTimers] = useState<KitchenTimer[]>([])
-  const rung = useRef(new Set<string>())
-  const last = recipe.steps.length - 1
-  function go(delta: number) { setStep(([current]) => { const next = Math.min(last, Math.max(0, current + delta)); return next === current ? [current, 0] : [next, delta] }) }
-  useEffect(() => { let lock: WakeLockSentinel | undefined; navigator.wakeLock?.request('screen').then(v => lock = v).catch(() => {}); const tick = setInterval(() => setTimers(ts => ts.map(t => ({ ...t, left: Math.max(0, t.left - 1) }))), 1000); return () => { clearInterval(tick); void lock?.release() } }, [])
-  useEffect(() => { for (const timer of timers) if (timer.left === 0 && !rung.current.has(timer.id)) { rung.current.add(timer.id); ring(timer.label) } }, [timers])
-  useEffect(() => {
-    const keys = (event: KeyboardEvent) => { if (event.key === 'ArrowRight') go(1); else if (event.key === 'ArrowLeft') go(-1); else if (event.key === 'Escape') setDrawer(false) }
-    addEventListener('keydown', keys); return () => removeEventListener('keydown', keys)
-  }, [last]) // eslint-disable-line react-hooks/exhaustive-deps
-  const step = recipe.steps[index]
-  function start(minutes: number) {
-    if ('Notification' in window && Notification.permission === 'default') void Notification.requestPermission()
-    setTimers(ts => [...ts, { id: uid(), label: `Passo ${index + 1}`, total: minutes * 60, left: minutes * 60 }])
-  }
-  return <main className="kitchen-mode"><header><button className="text-button" onClick={onClose}><X/> Sair do modo cozinha</button><span>{recipe.title}</span><button className="button button-small" onClick={() => setDrawer(!drawer)} aria-expanded={drawer}>Ingredientes</button></header>
-    <div className="kitchen-progress"><motion.i initial={false} animate={{ width: `${((index + 1) / recipe.steps.length) * 100}%` }} transition={paper}/></div>
-    <section>
-      <AnimatePresence mode="wait" custom={dir} initial={false}>
-        <motion.div key={index} className="kitchen-card" custom={dir} variants={stepCard} initial="enter" animate="center" exit="exit" drag="x" dragConstraints={{ left: 0, right: 0 }} dragElastic={0.35} onDragEnd={(_, info) => { if (info.offset.x < -80 || info.velocity.x < -450) go(1); else if (info.offset.x > 80 || info.velocity.x > 450) go(-1) }}>
-          <span className="eyebrow">Passo {index + 1} de {recipe.steps.length}</span>
-          <h1>{step.text || 'Descreva este passo no editor da receita.'}</h1>
-          {step.timerMinutes && <motion.button className="windup-timer" onClick={() => start(step.timerMinutes!)} whileTap={{ scale: 0.95 }}><ClockIcon/>Dar corda no relógio de {step.timerMinutes} min</motion.button>}
-          <small className="swipe-hint">Arraste para os lados para trocar de passo</small>
-        </motion.div>
-      </AnimatePresence>
-      <div className="kitchen-nav"><button disabled={index === 0} onClick={() => go(-1)}>← Anterior</button><AnimatePresence mode="popLayout" initial={false}><motion.strong key={index} initial={{ y: dir * 18, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: dir * -18, opacity: 0 }}>{String(index + 1).padStart(2, '0')}</motion.strong></AnimatePresence><button disabled={index === last} onClick={() => go(1)}>Próximo →</button></div>
-    </section>
-    <div className="timer-tray"><AnimatePresence>{timers.map(t => { const done = t.left === 0; return <motion.button layout key={t.id} className={done ? 'done' : ''} aria-label={done ? `${t.label}: tempo esgotado. Toque para desligar` : `${t.label}: faltam ${Math.ceil(t.left / 60)} minutos. Toque para cancelar`} onClick={() => setTimers(ts => ts.filter(x => x.id !== t.id))} initial={{ y: 70, opacity: 0, rotate: -10 }} animate={{ y: 0, opacity: 1, rotate: 0 }} exit={{ scale: 0.6, opacity: 0 }} transition={paper}><TimerFace left={t.left} total={t.total}/><span><small>{t.label}</small><strong>{Math.floor(t.left / 60)}:{String(t.left % 60).padStart(2, '0')}</strong></span></motion.button> })}</AnimatePresence></div>
-    <AnimatePresence>{drawer && <motion.aside className="kitchen-drawer" initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%', transition: { duration: 0.22 } }} transition={paper}><button onClick={() => setDrawer(false)} aria-label="Fechar ingredientes"><X/></button><h2>Ingredientes</h2>{recipe.ingredients.map((i, n) => <motion.p key={i.id} initial={{ opacity: 0, x: 18 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 + Math.min(n, 10) * 0.03 }}><strong>{prettyAmount(i.amount)} {i.amount !== null && i.unit}</strong> {i.name}</motion.p>)}</motion.aside>}</AnimatePresence>
-  </main>
-}
-function TimerFace({ left, total }: { left: number; total: number }) {
-  const angle = 360 * (1 - left / Math.max(total, 1))
-  return <svg className="timer-face" width="34" height="34" viewBox="0 0 40 40" fill="none" aria-hidden="true"><circle cx="9" cy="8" r="4.5" fill="currentColor"/><circle cx="31" cy="8" r="4.5" fill="currentColor"/><circle cx="20" cy="22" r="14" fill="#fff6e4" stroke="currentColor" strokeWidth="2.4"/><path d="M20 10.5v2.2M20 31.3v2.2M8.5 22h2.2M29.3 22h2.2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><path d="M20 22V12.5" stroke="#9b2d20" strokeWidth="2.2" strokeLinecap="round" transform={`rotate(${angle} 20 22)`}/><circle cx="20" cy="22" r="1.8" fill="currentColor"/><path d="M11 34l-2.5 3M29 34l2.5 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-}
-function ClockIcon() { return <svg className="windup-clock" width="40" height="40" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="22" r="14" stroke="currentColor" strokeWidth="2"/><path className="windup-hand" d="M20 22v-8m0 8 6 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><path d="M16 4h8M29 9l3-3" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg> }
