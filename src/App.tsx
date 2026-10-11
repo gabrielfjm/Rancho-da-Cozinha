@@ -42,7 +42,11 @@ export default function App() {
     if (nextScope === 'guest' || !configured) return
     setSyncLabel('Sincronizando…')
     try { await sync(nextScope); await refresh(nextScope); setSyncLabel('Em dia') }
-    catch (error) { console.error('Falha ao sincronizar o caderno', error); setSyncLabel('Pendente') }
+    catch (error) {
+      const detail = error instanceof Error ? error.message : JSON.stringify(error)
+      console.error('Falha ao sincronizar o caderno', detail)
+      setSyncLabel(`Pendente: ${detail.slice(0, 120)}`)
+    }
   }
   useEffect(() => {
     let alive = true
