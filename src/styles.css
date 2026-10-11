@@ -677,11 +677,6 @@ body{background-color:var(--cream);background-image:linear-gradient(rgba(255,255
 .cook-rail i{display:block;height:100%;transform-origin:left;background:linear-gradient(90deg,#c98d2e,#f4d184);box-shadow:0 0 10px rgba(244,209,132,.6)}
 
 .cook-timers{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;padding:10px 18px 0;overflow:hidden}
-.cook-timers button{display:flex;align-items:center;gap:9px;padding:5px 14px 5px 7px;border:2px solid #21150e;border-radius:30px;background:#f4d184;color:#2a1a10;text-align:left;box-shadow:0 6px 14px rgba(0,0,0,.35)}
-.cook-timers small{display:block;font:700 10px "Zilla Slab";letter-spacing:.12em;text-transform:uppercase}
-.cook-timers strong{display:block;font:400 19px Rye}
-.cook-timers .done{background:var(--barn);color:#fff6e4}
-.cook-timers .done .timer-face{transform-origin:50% 60%;animation:alarm .5s ease-in-out infinite}
 
 .cook-top,.cook-rail,.cook-timers,.cook-pages,.cook-controls{flex:none}
 .cook-stage{flex:1 1 auto;display:grid;place-items:center;min-height:0;padding:26px 18px 12px}
@@ -785,3 +780,36 @@ body{background-color:var(--cream);background-image:linear-gradient(rgba(255,255
   .cook-controls{grid-template-columns:62px 1fr}
 }
 @media print{.cook{display:none}}
+
+/* ===== Relógios da cozinha ===== */
+.timer-chip{display:flex;align-items:stretch;overflow:hidden;border:2px solid #21150e;border-radius:30px;background:#f4d184;color:#2a1a10;box-shadow:0 6px 14px rgba(0,0,0,.3)}
+.timer-chip-main{display:flex;align-items:center;gap:9px;padding:5px 12px 5px 7px;border:0;background:none;color:inherit;text-align:left}
+.timer-chip-copy{display:grid;line-height:1.05}
+.timer-chip-copy small{display:flex;align-items:center;gap:4px;max-width:160px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font:700 10px "Zilla Slab";letter-spacing:.1em;text-transform:uppercase}
+.timer-chip-copy strong{font:400 19px Rye}
+.timer-chip-x{display:grid;place-items:center;min-width:36px;padding:0 10px;border:0;border-left:1.5px dashed rgba(33,21,14,.35);background:none;color:#2a1a10;font:700 11px "Zilla Slab";letter-spacing:.06em;text-transform:uppercase;transition:background .2s,color .2s}
+.timer-chip-x.is-armed{background:var(--barn);color:#fff6e4}
+.timer-chip.is-ringing{background:var(--barn);color:#fff6e4;animation:chip-ring 1s ease-out infinite}
+.timer-chip.is-ringing .timer-face{color:#2a1a10;transform-origin:50% 60%;animation:alarm .5s ease-in-out infinite}
+@keyframes chip-ring{0%{box-shadow:0 6px 14px rgba(0,0,0,.3),0 0 0 0 rgba(244,209,132,.65)}100%{box-shadow:0 6px 14px rgba(0,0,0,.3),0 0 0 14px rgba(244,209,132,0)}}
+.timer-float{position:fixed;z-index:70;right:16px;bottom:calc(20px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;align-items:flex-end;gap:8px;pointer-events:none}
+.timer-float>*{pointer-events:auto}
+@media(max-width:700px){body:has(.dock) .timer-float{right:12px;bottom:calc(94px + env(safe-area-inset-bottom,0px))}}
+
+.alarm-curtain{position:fixed;inset:0;z-index:400;display:grid;place-items:center;overflow:auto;padding:90px 16px 28px;background:radial-gradient(ellipse at 50% 35%,rgba(155,45,32,.5),rgba(14,8,4,.95) 70%)}
+.alarm-rays{position:fixed;inset:-50%;background:repeating-conic-gradient(from 0deg at 50% 50%,rgba(244,209,132,.08) 0 8deg,transparent 8deg 16deg);pointer-events:none;animation:rays 40s linear infinite}
+@keyframes rays{to{transform:rotate(360deg)}}
+.alarm-card{position:relative;width:min(460px,100%);padding:28px 26px 24px;text-align:center;color:var(--ink);background-color:#fffaf0;background-image:repeating-linear-gradient(transparent 0 31px,rgba(62,92,118,.11) 31px 32px);border-top:12px solid var(--barn);border-radius:4px;box-shadow:0 30px 70px rgba(0,0,0,.6)}
+.alarm-clock{position:relative;display:grid;place-items:center;width:140px;height:140px;margin:-96px auto 4px;color:#2a1a10;filter:drop-shadow(0 12px 18px rgba(0,0,0,.45))}
+.alarm-clock .timer-face{transform-origin:50% 60%;animation:alarm-big .42s ease-in-out infinite}
+@keyframes alarm-big{0%,100%{transform:rotate(-9deg)}50%{transform:rotate(9deg)}}
+.alarm-clock .timer-bells{transform-box:fill-box;transform-origin:center;animation:bells .12s linear infinite}
+@keyframes bells{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.5px)}}
+.alarm-kind{position:absolute;right:2px;bottom:8px;display:grid;place-items:center;width:46px;height:46px;border:3px solid #fffaf0;border-radius:50%;background:var(--barn);color:#fff6e4}
+.alarm-stamp{position:absolute;top:22px;right:14px;font-size:12px}
+.alarm-card h2{margin:6px 0 8px;font:400 clamp(30px,7vw,42px)/1.05 Rye;color:var(--barn)}
+.alarm-card p{margin:0 0 6px;font-size:18px;line-height:1.5}
+.alarm-late{display:block;margin-bottom:6px;font-family:Caveat;font-size:19px;color:var(--muted)}
+.alarm-actions{display:grid;gap:10px;margin-top:16px}
+.alarm-more{display:block;margin-top:12px;color:var(--muted)}
+.timer-chip-copy small .kind-icon{flex:none;stroke-width:2}

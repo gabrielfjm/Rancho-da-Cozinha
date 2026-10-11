@@ -10,25 +10,11 @@ import { HandStars } from './RanchReview'
 import { Photo } from './Photo'
 import { Skillet } from './Artwork'
 import { DishFx } from './DishFx'
+import { TimerChip } from './Timers'
+import { startTimer, useNow, useTimers } from '../lib/timers'
+import { primeAudio } from '../lib/alarm'
 
-type KitchenTimer = { id: string; label: string; total: number; left: number }
 const pad = (n: number) => String(n).padStart(2, '0')
-
-// Campainha de relógio de corda: três toques curtos, sem arquivo de áudio.
-function ring(label: string) {
-  try {
-    const context = new AudioContext(); const now = context.currentTime
-    ;[0, 0.28, 0.56].forEach((offset, index) => {
-      const oscillator = context.createOscillator(); const gain = context.createGain()
-      oscillator.type = 'triangle'; oscillator.frequency.value = index === 1 ? 1320 : 990
-      gain.gain.setValueAtTime(0.0001, now + offset); gain.gain.exponentialRampToValueAtTime(0.25, now + offset + 0.02); gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.25)
-      oscillator.connect(gain).connect(context.destination); oscillator.start(now + offset); oscillator.stop(now + offset + 0.26)
-    })
-    setTimeout(() => void context.close(), 1200)
-  } catch { /* sem áudio disponível */ }
-  navigator.vibrate?.([220, 100, 220])
-  if ('Notification' in window && Notification.permission === 'granted' && document.hidden) new Notification('Rancho da Cozinha', { body: `${label}: o relógio tocou.`, icon: '/icon-192.png' })
-}
 
 const stopWords = new Set(['de', 'da', 'do', 'das', 'dos', 'com', 'sem', 'em', 'para', 'ou', 'e', 'a', 'o', 'ao', 'na', 'no', 'em', 'po'])
 /** Ingredientes citados no texto do passo, tolerando plural e acento ("ovo" encontra "ovos"). */
@@ -47,11 +33,6 @@ const deal = {
 }
 
 function ClockIcon() { return <svg className="windup-clock" width="34" height="34" viewBox="0 0 40 40" fill="none" aria-hidden="true"><circle cx="20" cy="22" r="14" stroke="currentColor" strokeWidth="2.2"/><path className="windup-hand" d="M20 22v-8m0 8 6 4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/><path d="M16 4h8M29 9l3-3" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg> }
-function TimerFace({ left, total }: { left: number; total: number }) {
-  const angle = 360 * (1 - left / Math.max(total, 1))
-  return <svg className="timer-face" width="32" height="32" viewBox="0 0 40 40" fill="none" aria-hidden="true"><circle cx="9" cy="8" r="4.5" fill="currentColor"/><circle cx="31" cy="8" r="4.5" fill="currentColor"/><circle cx="20" cy="22" r="14" fill="#fff6e4" stroke="currentColor" strokeWidth="2.4"/><path d="M20 10.5v2.2M20 31.3v2.2M8.5 22h2.2M29.3 22h2.2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><path d="M20 22V12.5" stroke="#9b2d20" strokeWidth="2.2" strokeLinecap="round" transform={`rotate(${angle} 20 22)`}/><circle cx="20" cy="22" r="1.8" fill="currentColor"/><path d="M11 34l-2.5 3M29 34l2.5 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-}
-
 export function Kitchen({ recipe, catalog, onClose, onLog, onRate, onSave }: {
   recipe: Recipe; catalog: boolean; onClose: () => void; onLog: (log: CookLog) => Promise<boolean>; onRate: (rating: number) => Promise<unknown>; onSave: () => Promise<unknown>
 }) {
@@ -59,13 +40,13 @@ export function Kitchen({ recipe, catalog, onClose, onLog, onRate, onSave }: {
   const last = steps.length - 1
   const [[index, dir], setStep] = useState<[number, number]>([0, 0])
   const [drawer, setDrawer] = useState(false)
-  const [timers, setTimers] = useState<KitchenTimer[]>([])
+  const timers = useTimers()
+  const now = useNow(timers.length > 0)
   const [gathered, setGathered] = useState<string[]>([])
   const [finale, setFinale] = useState<{ minutes: number; timers: number }>()
   const [full, setFull] = useState(false)
   const started = useRef(Date.now())
   const timersUsed = useRef(0)
-  const rung = useRef(new Set<string>())
   const dragged = useRef(false)
   const step = steps[index]
   const uses = useMemo(() => usedIn(recipe, step.text), [recipe, step.text])
@@ -76,8 +57,9 @@ export function Kitchen({ recipe, catalog, onClose, onLog, onRate, onSave }: {
   function finish() { setDrawer(false); setFinale({ minutes: Math.max(1, Math.round((Date.now() - started.current) / 60000)), timers: timersUsed.current }) }
   function start(minutes: number) {
     if ('Notification' in window && Notification.permission === 'default') void Notification.requestPermission()
+    primeAudio()
     timersUsed.current += 1
-    setTimers(ts => [...ts, { id: uid(), label: `Passo ${index + 1}`, total: minutes * 60, left: minutes * 60 }])
+    startTimer({ recipeId: recipe.id, recipeTitle: recipe.title, step: index + 1, text: step.text, minutes })
   }
   function toggleFullscreen() {
     if (document.fullscreenElement) void document.exitFullscreen().catch(() => {})
@@ -87,19 +69,17 @@ export function Kitchen({ recipe, catalog, onClose, onLog, onRate, onSave }: {
   useEffect(() => {
     let lock: WakeLockSentinel | undefined
     navigator.wakeLock?.request('screen').then(value => { lock = value }).catch(() => {})
-    const tick = setInterval(() => setTimers(ts => ts.map(t => ({ ...t, left: Math.max(0, t.left - 1) }))), 1000)
     const overflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     const syncFull = () => setFull(Boolean(document.fullscreenElement))
     document.addEventListener('fullscreenchange', syncFull)
     if (document.fullscreenEnabled && !document.fullscreenElement) void document.documentElement.requestFullscreen().catch(() => {})
     return () => {
-      clearInterval(tick); void lock?.release(); document.body.style.overflow = overflow
+      void lock?.release(); document.body.style.overflow = overflow
       document.removeEventListener('fullscreenchange', syncFull)
       if (document.fullscreenElement) void document.exitFullscreen().catch(() => {})
     }
   }, [])
-  useEffect(() => { for (const timer of timers) if (timer.left === 0 && !rung.current.has(timer.id)) { rung.current.add(timer.id); ring(timer.label) } }, [timers])
   useEffect(() => {
     const keys = (event: KeyboardEvent) => {
       if (finale || (event.target as HTMLElement).closest('textarea, input')) return
@@ -123,7 +103,7 @@ export function Kitchen({ recipe, catalog, onClose, onLog, onRate, onSave }: {
     <div className="cook-rail" aria-hidden="true"><motion.i initial={false} animate={{ scaleX: (index + 1) / steps.length }} transition={paper}/></div>
 
     <AnimatePresence>{timers.length > 0 && <motion.div className="cook-timers" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}>
-      <AnimatePresence>{timers.map(t => { const done = t.left === 0; return <motion.button layout type="button" key={t.id} className={done ? 'done' : ''} aria-label={done ? `${t.label}: tempo esgotado. Toque para desligar` : `${t.label}: faltam ${Math.ceil(t.left / 60)} minutos. Toque para cancelar`} onClick={() => setTimers(ts => ts.filter(x => x.id !== t.id))} initial={{ y: -20, opacity: 0, rotate: -8 }} animate={{ y: 0, opacity: 1, rotate: 0 }} exit={{ scale: 0.6, opacity: 0 }} transition={paper}><TimerFace left={t.left} total={t.total}/><span><small>{done ? 'Tocou!' : t.label}</small><strong>{Math.floor(t.left / 60)}:{pad(t.left % 60)}</strong></span></motion.button> })}</AnimatePresence>
+      <AnimatePresence>{timers.map(timer => <TimerChip key={timer.id} timer={timer} now={now} showRecipe={timer.recipeId !== recipe.id}/>)}</AnimatePresence>
     </motion.div>}</AnimatePresence>
 
     <section className="cook-stage">
