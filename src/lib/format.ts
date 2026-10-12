@@ -17,6 +17,15 @@ export function prettyAmount(value: number | null): string {
   if (match) return `${whole || ''}${whole && match[1] ? ' ' : ''}${match[1]}` || '0'
   return Number(value.toFixed(2)).toLocaleString('pt-BR')
 }
+export function amountUnit(unit: string, amount: number | null): string {
+  if (amount === null || amount <= 1) return unit
+  const plural: Record<string, string> = {
+    unidade: 'unidades', xícara: 'xícaras', 'colher de sopa': 'colheres de sopa',
+    'colher de chá': 'colheres de chá', colher: 'colheres', dente: 'dentes',
+    fatia: 'fatias', lata: 'latas', pacote: 'pacotes', punhado: 'punhados', ramo: 'ramos'
+  }
+  return plural[unit] ?? unit
+}
 export function normalize(value: string) { return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() }
 export function uid() { return crypto.randomUUID() }
 export function gramsFor(amount: number | null, unit: string, factors: Record<string, number>) {

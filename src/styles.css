@@ -907,3 +907,9 @@ body{background-color:var(--cream);background-image:linear-gradient(rgba(255,255
 .world-catalog-pages{display:flex;align-items:center;justify-content:center;gap:18px;margin:32px auto 0;font:700 14px "Zilla Slab"}
 .world-catalog-pages .button:disabled{opacity:.45;cursor:default;transform:none}
 @media(max-width:700px){.world-catalog-filters{grid-template-columns:1fr;gap:12px;padding:15px}.world-catalog-pages{gap:9px}.world-catalog-pages .button{padding:8px}.world-catalog-intro{margin-bottom:16px}}
+
+/* Região escolhida manualmente quando a localização não está disponível. */
+.weather-controls{display:grid;justify-items:end;gap:9px}
+.region-choice{display:flex;align-items:center;gap:8px;color:var(--muted);font:700 12px "Zilla Slab"}
+.region-choice select{max-width:190px;padding:5px 8px;border:1px solid var(--line);border-radius:3px;background:var(--paper);color:var(--ink);font:700 13px "Zilla Slab"}
+@media(max-width:700px){.weather-controls{width:100%;justify-items:stretch}.region-choice{justify-content:flex-end}}

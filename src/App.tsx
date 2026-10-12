@@ -9,10 +9,10 @@ import { CATEGORIES, INGREDIENT_CATEGORIES } from './types'
 import { deleteEntity, configured, loadState, pendingChanges, saveEntity, seedAccount, supabase, sync, uploadAvatar } from './lib/store'
 import { normalize, prettyAmount, uid } from './lib/format'
 import { brazilianRecipes, type BrazilianRecipe } from './data/brazilianRecipes'
-import { currentMoment, momentSentence, rankForMoment } from './lib/moment'
+import { currentMoment, momentSentence, rankForMoment, rankRecommendations } from './lib/moment'
 import { ranchReviews } from './data/ranchReviews'
 import { calorieLabel } from './lib/nutrition'
-import { weatherAtCurrentLocation, type WeatherContext } from './lib/weather'
+import { refreshWeather, weatherAtCurrentLocation, type WeatherContext } from './lib/weather'
 import { inView, ink, pageVariants, paper, rise, stack, stamp, type PageMotion } from './lib/motion'
 import { RecipeCard } from './components/RecipeCard'
 import { RecipeForm } from './components/RecipeForm'
@@ -82,6 +82,14 @@ export default function App() {
     }
     go('catalog')
   }
+
+  useEffect(() => {
+    if (!session) return
+    setCatalogLoading(true)
+    void loadWorldRecipes().then(recipes => { setWorldRecipes(recipes); setCatalogError(false) })
+      .catch(error => { console.error('Falha ao abrir o acervo', error); setCatalogError(true) })
+      .finally(() => setCatalogLoading(false))
+  }, [session])
 
   function adoptScope(next: string) { scopeRef.current = next; setScope(next) }
   async function refresh(nextScope: string) { setState(await loadState(nextScope)) }
@@ -266,7 +274,7 @@ export default function App() {
           {page !== 'kitchen' && <Header page={page} navigate={target => target === 'catalog' ? openCatalog() : go(target)} menu={menu} setMenu={setMenu} session={session} isAdmin={isAdmin} syncStatus={syncStatus} pending={pending} onSync={() => void runSync()}/>}
           <AnimatePresence mode="wait" custom={pageMotion} onExitComplete={() => scrollTo({ top: 0 })}>
             <motion.div key={`${page}-${selectedId ?? ''}`} className="page-sheet" custom={pageMotion} variants={pageVariants} initial="enter" animate="center" exit="exit" style={{ transformOrigin: '50% 0' }}>
-              {page === 'home' && <HomePage recipes={state.recipes} openRecipe={openRecipe} saveSuggestion={adoptRecipe} newRecipe={newRecipe} navigate={target => target === 'catalog' ? openCatalog() : go(target)}/>}
+              {page === 'home' && <HomePage recipes={state.recipes} catalogRecipes={catalogRecipes} openRecipe={openRecipe} saveSuggestion={adoptRecipe} newRecipe={newRecipe} navigate={target => target === 'catalog' ? openCatalog() : go(target)}/>}
               {page === 'catalog' && <WorldCatalog recipes={catalogRecipes} loading={catalogLoading} error={catalogError} onOpen={openRecipe} onRetry={openCatalog}/>}
               {page === 'notebook' && <Notebook recipes={state.recipes} collections={state.collections} onSaveCollection={saveCollection} openRecipe={openRecipe} newRecipe={newRecipe}/>}
               {page === 'pantry' && <Pantry recipes={state.recipes} ingredients={ingredients} openRecipe={openRecipe}/>}
@@ -326,20 +334,30 @@ const featureSwap = {
   center: { opacity: 1, x: 0, rotate: 0, transition: { duration: 0.45, ease: ink } },
   exit: (dir: number) => ({ opacity: 0, x: dir * -32, rotate: dir * -0.8, transition: { duration: 0.22 } })
 }
-function HomePage({ recipes, openRecipe, saveSuggestion, newRecipe, navigate }: { recipes: Recipe[]; openRecipe: (r: Recipe) => void; saveSuggestion: (r: Recipe) => Promise<boolean>; newRecipe: () => void; navigate: (p: Page) => void }) {
+function HomePage({ recipes, catalogRecipes, openRecipe, saveSuggestion, newRecipe, navigate }: { recipes: Recipe[]; catalogRecipes: Recipe[]; openRecipe: (r: Recipe) => void; saveSuggestion: (r: Recipe) => Promise<boolean>; newRecipe: () => void; navigate: (p: Page) => void }) {
   const [weather, setWeather] = useState<WeatherContext>()
   const [weatherState, setWeatherState] = useState<'loading' | 'ready' | 'denied'>('loading')
+  const [preferredRegion, setPreferredRegion] = useState(() => localStorage.getItem('rancho:regiao') || '')
   async function loadWeather() {
     setWeatherState('loading')
     try { setWeather(await weatherAtCurrentLocation()); setWeatherState('ready') }
-    catch { setWeatherState('denied') }
+    catch { setWeather(undefined); setWeatherState('denied') }
   }
   useEffect(() => { void loadWeather() }, [])
+  useEffect(() => {
+    if (!weather) return
+    const timer = setInterval(() => { void refreshWeather(weather).then(setWeather).catch(() => {}) }, 30 * 60 * 1000)
+    return () => clearInterval(timer)
+  }, [weather])
   const [now, setNow] = useState(() => new Date())
   useEffect(() => { const timer = setInterval(() => setNow(new Date()), 5 * 60 * 1000); return () => clearInterval(timer) }, [])
-  const moment = useMemo(() => currentMoment(weather, now), [weather, now])
-  const picks = useMemo(() => rankForMoment(brazilianRecipes, moment, now), [moment, now])
-  const featured = picks.slice(0, 4)
+  const moment = useMemo(() => currentMoment(weather, now, preferredRegion), [weather, now, preferredRegion])
+  const picks = useMemo(() => rankRecommendations(catalogRecipes, moment, now), [catalogRecipes, moment, now])
+  const reviewPicks = useMemo(() => rankForMoment(brazilianRecipes, moment, now), [moment, now])
+  const featured = useMemo(() => {
+    let brazilianCount = 0
+    return picks.filter(item => !item.recipe.id.startsWith('rancho-') || ++brazilianCount <= 2).slice(0, 4)
+  }, [picks])
   const featuredKey = featured.map(item => item.recipe.id).join()
   const daily = useRef<HTMLElement>(null)
   const rotation = useRotation(featured.length, FEATURE_DWELL, daily)
@@ -360,8 +378,10 @@ function HomePage({ recipes, openRecipe, saveSuggestion, newRecipe, navigate }: 
     </motion.section>
 
     <section className="daily smart-daily" ref={daily}>
-      <div className="section-row"><div className="section-intro"><span className="eyebrow">Sugestão do Rancho para agora</span><h2>O prato certo para agora</h2></div>
-        <WeatherTicket weather={weather} state={weatherState} moment={moment} onLocate={() => void loadWeather()}/>
+      <div className="section-row"><div className="section-intro"><span className="eyebrow">Sugestão do Rancho para agora</span><h2>O prato certo para agora</h2><p>Ideias do acervo pelo horário e, com sua localização, pela região e pelo clima.</p></div>
+        <div className="weather-controls"><WeatherTicket weather={weather} state={weatherState} moment={moment} onLocate={() => void loadWeather()}/>
+          <label className="region-choice">Minha região <select value={preferredRegion} onChange={event => { const value = event.target.value; setPreferredRegion(value); if (value) localStorage.setItem('rancho:regiao', value); else localStorage.removeItem('rancho:regiao') }}><option value="">{preferredRegion ? 'Automática' : moment.region ? `Automática (${moment.region})` : 'Escolher região'}</option>{['Norte', 'Nordeste', 'Centro-Oeste', 'Sudeste', 'Sul'].map(region => <option key={region}>{region}</option>)}</select></label>
+        </div>
       </div>
       <div className="climate-stage" {...rotation.hoverProps}>
         <AnimatePresence mode="wait" initial={false} custom={direction.current}>
@@ -376,9 +396,9 @@ function HomePage({ recipes, openRecipe, saveSuggestion, newRecipe, navigate }: 
             </div>
             <div className="climate-card-copy">
               <motion.span className="recommendation-badge" initial={{ scale: 1.6, opacity: 0, rotate: -9 }} animate={{ scale: 1, opacity: 1, rotate: 0 }} transition={{ ...stamp, delay: 0.25 }}><ThermometerSun size={16}/>{pick.reason ?? 'Escolha da cozinha do Rancho'}{moment.temperature !== undefined ? ` · ${moment.temperature} °C` : ''}</motion.span>
-              <span className="eyebrow">{recommendation.regions.join(' · ')}</span><h3>{recommendation.title}</h3><p>{recommendation.description}</p>
+              <span className="eyebrow">{'regions' in recommendation && Array.isArray(recommendation.regions) ? recommendation.regions.join(' · ') : recommendation.tags[0]}</span><h3>{recommendation.title}</h3><p>{recommendation.description}</p>
               {review && <p className="climate-verdict">“{review.verdict}”<small>— cozinha de teste do Rancho</small></p>}
-              <div className="recommendation-meta"><span><Flame size={16}/>{calorieLabel(recommendation)}</span><span>{recommendation.prepMinutes + recommendation.cookMinutes} min</span><span>rende {recommendation.servings}</span></div>
+              <div className="recommendation-meta"><span><Flame size={16}/>{calorieLabel(recommendation)}</span><span>{recommendation.prepMinutes + recommendation.cookMinutes ? `${recommendation.prepMinutes + recommendation.cookMinutes} min` : 'Tempo variável'}</span>{recommendation.servingsKnown !== false && <span>rende {recommendation.servings}</span>}</div>
               <div className="recommendation-actions"><button className="button" onClick={event => { event.stopPropagation(); openRecipe(recommendation) }}><BookOpen size={17}/> Abrir a receita</button><span onClick={event => event.stopPropagation()}><BusyButton className="button button-paper" busyLabel="Copiando a ficha…" doneLabel="No seu caderno" onClick={() => saveSuggestion(recommendation)}><Plus size={17}/> Guardar no meu caderno</BusyButton></span></div>
             </div>
           </motion.article>
@@ -392,10 +412,10 @@ function HomePage({ recipes, openRecipe, saveSuggestion, newRecipe, navigate }: 
       </div>
     </section>
 
-    <section className="home-section tasting-section"><div className="section-row"><div><span className="eyebrow">Provado e aprovado</span><h2>Varal de provas do Rancho</h2><p>{momentSentence(moment)}: as primeiras fichas do varal combinam com agora.</p></div><Tally count={Object.keys(ranchReviews).length} label="fichas julgadas"/></div><ReviewLine picks={picks} onOpen={openRecipe}/></section>
+    <section className="home-section tasting-section"><div className="section-row"><div><span className="eyebrow">Provado e aprovado</span><h2>Varal de provas do Rancho</h2><p>{momentSentence(moment)}: as primeiras fichas do varal combinam com agora.</p></div><Tally count={Object.keys(ranchReviews).length} label="fichas julgadas"/></div><ReviewLine picks={reviewPicks} onOpen={openRecipe}/></section>
 
     <section className="home-section catalog-section"><div className="section-row"><div><span className="eyebrow">Base brasileira do Rancho</span><h2>Sabores de várias regiões</h2><p>Receitas selecionadas e prontas para entrar no seu caderno.</p><button className="text-button" onClick={() => navigate('catalog')}>Explorar o acervo completo →</button></div><Tally count={brazilianRecipes.length} label="fichas brasileiras"/></div>
-      <motion.div className="catalog-grid" {...inView} variants={stack(0.07)}>{brazilianRecipes.filter(item => item.id !== picks[0].recipe.id).slice(0, 6).map(item => <CatalogCard key={item.id} item={item} onOpen={() => openRecipe(item)}/>)}</motion.div>
+      <motion.div className="catalog-grid" {...inView} variants={stack(0.07)}>{brazilianRecipes.filter(item => item.id !== reviewPicks[0].recipe.id).slice(0, 6).map(item => <CatalogCard key={item.id} item={item} onOpen={() => openRecipe(item)}/>)}</motion.div>
     </section>
 
     <section className="home-section"><div className="section-row"><div><span className="eyebrow">Páginas recentes</span><h2>Do seu caderno</h2></div><button className="text-button" onClick={() => navigate('notebook')}>Ver todas →</button></div>{recent.length ? <div className="card-grid">{recent.map((r, i) => <RecipeCard key={r.id} recipe={r} index={i} onOpen={() => openRecipe(r)}/>)}</div> : <EmptyNotebook newRecipe={newRecipe}/>}</section>

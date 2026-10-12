@@ -7,3 +7,7 @@ taco.xlsx
 __pycache__/
 *.pyc
 *.tsbuildinfo
+.venv-translate/
+.translation-cache.json
+.worldRecipes-ptBR.json
+*.json.tmp
