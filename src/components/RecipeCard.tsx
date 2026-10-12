@@ -20,7 +20,7 @@ export function RecipeCard({ recipe, index, onOpen }: { recipe: Recipe; index: n
       <span className="eyebrow">{recipe.category} · {recipe.draft ? 'Rascunho' : 'Ficha da casa'}</span>
       <h3>{recipe.title || 'Receita sem nome'}</h3>
       <p>{recipe.description || 'Uma receita para guardar e fazer de novo.'}</p>
-      <div className="card-foot"><span><Clock3 size={15}/>{recipe.prepMinutes + recipe.cookMinutes} min</span><span><Flame size={15}/>{calorieLabel(recipe)}</span><span><Star size={15} fill="currentColor"/>{recipe.rating || '—'}</span>{recipe.favorite && <Heart size={16} fill="currentColor" aria-label="Favorita"/>}</div>
+      <div className="card-foot"><span><Clock3 size={15}/>{recipe.prepMinutes + recipe.cookMinutes ? `${recipe.prepMinutes + recipe.cookMinutes} min` : 'Tempo variável'}</span><span><Flame size={15}/>{calorieLabel(recipe)}</span><span><Star size={15} fill="currentColor"/>{recipe.rating || '—'}</span>{recipe.favorite && <Heart size={16} fill="currentColor" aria-label="Favorita"/>}</div>
     </div>
   </motion.button>
 }

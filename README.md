@@ -12,8 +12,15 @@ Caderno de receitas pessoal com visual inspirado em fichas antigas, diners e coz
 - “O que faço com o que tenho?”, lista de compras agrupada e agregação de itens repetidos.
 - Login com e-mail/senha e Google, RLS, Storage privado, cache Dexie e fila de sincronização.
 - Tema “Noite no Rancho”, backup JSON, PWA e layout responsivo.
+- Acervo pesquisável com 789 receitas: 9 fichas brasileiras do Rancho e 780 receitas internacionais do TheMealDB, com filtros por tipo e origem. As receitas internacionais preservam o preparo em inglês e a atribuição à fonte.
 
 O plano de telas e o modelo de dados estão em [docs/PLANO.md](docs/PLANO.md). O schema versionado está em [supabase/migrations/202610100001_initial.sql](supabase/migrations/202610100001_initial.sql).
+
+## Acervo internacional
+
+O arquivo `src/data/worldRecipes.json` é uma cópia compacta das receitas obtidas pelos [endpoints oficiais da API do TheMealDB](https://www.themealdb.com/docs_api_guide.php) em 12/10/2026. O catálogo é carregado apenas quando alguém abre **Explorar receitas**, mantendo a abertura do app leve. Fotos são carregadas sob demanda e algumas ficam no cache do aparelho. As receitas não são inseridas na conta Supabase até a pessoa escolher **Guardar no meu caderno**.
+
+Para atualizar a cópia, execute `python scripts/import_themealdb.py` e valide com `npm run build`. Os [termos do TheMealDB](https://www.themealdb.com/terms_of_use.php) permitem copiar conteúdo retornado pelos endpoints oficiais para projetos de desenvolvimento e restringem a publicação em lojas de aplicativos sem assinatura paga; este projeto é distribuído como PWA pelo site.
 
 ## Instalar no telefone
 

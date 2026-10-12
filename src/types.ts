@@ -16,7 +16,8 @@ export type Recipe = {
   category: string; tags: string[]; prepMinutes: number; cookMinutes: number; servings: number;
   difficulty: 1 | 2 | 3; ingredients: RecipeIngredient[]; steps: Step[]; utensils: string[];
   tips: string; rating: number; favorite: boolean; cover?: string; gallery: string[];
-  draft: boolean; createdAt: string; updatedAt: string; shared?: boolean
+  draft: boolean; createdAt: string; updatedAt: string; shared?: boolean;
+  sourceUrl?: string; originalLanguage?: string; servingsKnown?: boolean; difficultyKnown?: boolean
 }
 export type Collection = { id: string; ownerId?: string; name: string; recipeIds: string[] }
 export type ShoppingItem = { id: string; ownerId?: string; ingredientId: string; name: string; category: string; amount: number | null; unit: string; checked: boolean }
