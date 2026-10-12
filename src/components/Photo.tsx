@@ -13,6 +13,6 @@ export function Photo({ value, alt, className = '', fallback = null }: { value?:
   }, [value])
   if (!value) return <>{fallback}</>
   return <span className={`photo ${loaded ? 'is-developed' : 'is-developing'} ${className}`}>
-    {url && <img src={url} alt={alt} onLoad={() => setLoaded(true)} onError={() => setLoaded(true)}/>}
+    {url && <img src={url} alt={alt} loading="lazy" decoding="async" onLoad={() => setLoaded(true)} onError={() => setLoaded(true)}/>}
   </span>
 }

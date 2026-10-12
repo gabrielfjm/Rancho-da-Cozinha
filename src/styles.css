@@ -892,3 +892,18 @@ body{background-color:var(--cream);background-image:linear-gradient(rgba(255,255
 .profile-form .install-app{margin-top:25px}
 :root[data-theme="dark"] .install-app{background:#34251b;border-color:#76523a}
 :root[data-theme="dark"] .install-app-instructions{background:#493424}
+
+/* Acervo de receitas */
+.world-catalog-intro{display:flex;align-items:flex-start;gap:12px;max-width:850px;margin:0 0 24px;padding:14px 18px;border-left:4px solid var(--wheat);background:var(--paper);color:var(--muted)}
+.world-catalog-intro svg{flex:none;color:var(--barn)}
+.world-catalog-intro p{margin:0;font-size:14px;line-height:1.6}
+.world-catalog-intro a{color:var(--barn);font-weight:700}
+.world-catalog-filters{display:grid;grid-template-columns:minmax(260px,2fr) minmax(160px,1fr) minmax(160px,1fr);align-items:end;gap:14px;margin:0 0 20px;padding:20px;border:1px solid var(--line);background:var(--paper)}
+.world-catalog-filters>label:not(.search-box){display:grid;gap:6px;color:var(--leather);font:700 13px "Zilla Slab"}
+.world-catalog-filters select{width:100%;min-height:48px;padding:8px 12px;border:1px solid var(--line);border-radius:3px;background:#fffaf0;color:var(--ink)}
+.world-catalog-filters .search-box{margin:0}
+.world-catalog-count{margin:0 0 18px;color:var(--muted);font:600 15px "Zilla Slab"}
+.world-catalog-count strong{color:var(--barn);font-size:22px}
+.world-catalog-pages{display:flex;align-items:center;justify-content:center;gap:18px;margin:32px auto 0;font:700 14px "Zilla Slab"}
+.world-catalog-pages .button:disabled{opacity:.45;cursor:default;transform:none}
+@media(max-width:700px){.world-catalog-filters{grid-template-columns:1fr;gap:12px;padding:15px}.world-catalog-pages{gap:9px}.world-catalog-pages .button{padding:8px}.world-catalog-intro{margin-bottom:16px}}

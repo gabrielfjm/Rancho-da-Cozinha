@@ -28,11 +28,13 @@ import { WeatherTicket } from './components/WeatherTicket'
 import { Footer } from './components/Footer'
 import { Dock } from './components/Dock'
 import { InstallApp } from './components/InstallApp'
+import { WorldCatalog } from './components/WorldCatalog'
+import { loadWorldRecipes } from './lib/worldRecipes'
 import { Kitchen } from './components/Kitchen'
 import { AlarmCurtain, ClockScreen, TimerTray } from './components/Timers'
 import { openClock, snoozeTimer, startTimerEngine, stopTimer } from './lib/timers'
 
-type Page = 'home' | 'notebook' | 'pantry' | 'shopping' | 'settings' | 'auth' | 'form' | 'recipe' | 'kitchen'
+type Page = 'home' | 'catalog' | 'notebook' | 'pantry' | 'shopping' | 'settings' | 'auth' | 'form' | 'recipe' | 'kitchen'
 const emptyState: LocalState = { recipes: [], customIngredients: [], collections: [], shopping: [], cookLogs: [] }
 const catalog = ingredientsJson as unknown as IngredientBase[]
 const ADMIN_EMAIL = (import.meta.env.VITE_ADMIN_EMAIL || 'gabrielfjmeira@gmail.com').toLowerCase()
@@ -50,6 +52,7 @@ export default function App() {
   const [scope, setScope] = useState('guest')
   const [state, setState] = useState<LocalState>(emptyState)
   const [page, setPage] = useState<Page>('home')
+  const [recipeReturnPage, setRecipeReturnPage] = useState<Page>('notebook')
   const [pageMotion, setPageMotion] = useState<PageMotion>('turn')
   const [selectedId, setSelectedId] = useState<string>()
   const [editing, setEditing] = useState<Recipe>()
@@ -57,15 +60,28 @@ export default function App() {
   const [notes, setNotes] = useState<Note[]>([])
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(configured ? 'idle' : 'local')
   const [pending, setPending] = useState(0)
+  const [worldRecipes, setWorldRecipes] = useState<Recipe[]>([])
+  const [catalogLoading, setCatalogLoading] = useState(false)
+  const [catalogError, setCatalogError] = useState(false)
   const scopeRef = useRef('guest')
   const syncJob = useRef<{ running: boolean; again: boolean; timer?: number }>({ running: false, again: false })
   const ingredients = useMemo(() => [...catalog, ...state.customIngredients], [state.customIngredients])
+  const catalogRecipes = useMemo(() => [...brazilianRecipes, ...worldRecipes], [worldRecipes])
   const selectedFromNotebook = state.recipes.find(recipe => recipe.id === selectedId)
   const selectedFromCatalog = brazilianRecipes.find(recipe => recipe.id === selectedId)
-  const selected = selectedFromNotebook ?? selectedFromCatalog
+  const selectedFromWorld = worldRecipes.find(recipe => recipe.id === selectedId)
+  const selected = selectedFromNotebook ?? selectedFromCatalog ?? selectedFromWorld
   const isAdmin = session?.user.email?.toLowerCase() === ADMIN_EMAIL
   const phone = useMedia('(max-width: 700px)')
   const dockTarget = page === 'recipe' ? (selectedFromNotebook ? 'notebook' : 'home') : (['home', 'notebook', 'pantry', 'shopping'] as const).find(target => target === page)
+
+  function openCatalog() {
+    if (!worldRecipes.length && !catalogLoading) {
+      setCatalogLoading(true); setCatalogError(false)
+      void loadWorldRecipes().then(recipes => setWorldRecipes(recipes)).catch(error => { console.error('Falha ao abrir o acervo', error); setCatalogError(true) }).finally(() => setCatalogLoading(false))
+    }
+    go('catalog')
+  }
 
   function adoptScope(next: string) { scopeRef.current = next; setScope(next) }
   async function refresh(nextScope: string) { setState(await loadState(nextScope)) }
@@ -166,7 +182,7 @@ export default function App() {
   }
   const saveDraft = (recipe: Recipe) => attempt(async () => { await storeRecipe(recipe); scheduleSync(2500) }, 'O rascunho não foi guardado neste aparelho.')
   const saveRecipe = (recipe: Recipe) => attempt(async () => { await storeRecipe(recipe); scheduleSync(300) }, 'A receita não foi guardada. Tente outra vez.')
-  function recipeSaved(recipe: Recipe) { setSelectedId(recipe.id); go('recipe', 'open'); notify('Receita guardada no caderno.') }
+  function recipeSaved(recipe: Recipe) { setSelectedId(recipe.id); setRecipeReturnPage('notebook'); go('recipe', 'open'); notify('Receita guardada no caderno.') }
   const removeRecipe = (recipe: Recipe) => attempt(async () => {
     await deleteEntity(scope, 'recipes', recipe.id)
     setState(current => ({ ...current, recipes: current.recipes.filter(r => r.id !== recipe.id) }))
@@ -232,11 +248,11 @@ export default function App() {
   }, 'O backup não foi importado.')
 
   function go(next: Page, kind: PageMotion = 'turn') { setPageMotion(kind); setPage(next === 'settings' && !isAdmin ? 'home' : next); setMenu(false) }
-  function openRecipe(recipe: Recipe) { setSelectedId(recipe.id); go('recipe', 'open') }
+  function openRecipe(recipe: Recipe) { setSelectedId(recipe.id); setRecipeReturnPage(page); go('recipe', 'open') }
   function newRecipe() { setEditing(blankRecipe()); go('form') }
   async function adoptRecipe(recipe: Recipe) {
     const now = new Date().toISOString()
-    const copy: Recipe = { ...recipe, id: uid(), ownerId: scope, source: `${recipe.source} · ${'sourceUrl' in recipe ? recipe.sourceUrl : ''}`.replace(/ · $/, ''), ingredients: recipe.ingredients.map(item => ({ ...item, id: uid() })), steps: recipe.steps.map(step => ({ ...step, id: uid() })), favorite: false, rating: 0, createdAt: now, updatedAt: now }
+    const copy: Recipe = { ...recipe, id: uid(), ownerId: scope, ingredients: recipe.ingredients.map(item => ({ ...item, id: uid() })), steps: recipe.steps.map(step => ({ ...step, id: uid() })), favorite: false, rating: 0, createdAt: now, updatedAt: now }
     const ok = await saveRecipe(copy)
     if (ok) recipeSaved(copy)
     return ok
@@ -247,19 +263,20 @@ export default function App() {
       {!authReady ? <LoadingScreen key="loading"/>
         : !session ? <Auth key="auth" session={null} onDone={() => setPage('home')}/>
         : <motion.div key="app" className="app-shell" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4 }}>
-          {page !== 'kitchen' && <Header page={page} navigate={target => go(target)} menu={menu} setMenu={setMenu} session={session} isAdmin={isAdmin} syncStatus={syncStatus} pending={pending} onSync={() => void runSync()}/>}
+          {page !== 'kitchen' && <Header page={page} navigate={target => target === 'catalog' ? openCatalog() : go(target)} menu={menu} setMenu={setMenu} session={session} isAdmin={isAdmin} syncStatus={syncStatus} pending={pending} onSync={() => void runSync()}/>}
           <AnimatePresence mode="wait" custom={pageMotion} onExitComplete={() => scrollTo({ top: 0 })}>
             <motion.div key={`${page}-${selectedId ?? ''}`} className="page-sheet" custom={pageMotion} variants={pageVariants} initial="enter" animate="center" exit="exit" style={{ transformOrigin: '50% 0' }}>
-              {page === 'home' && <HomePage recipes={state.recipes} openRecipe={openRecipe} saveSuggestion={adoptRecipe} newRecipe={newRecipe} navigate={target => go(target)}/>}
+              {page === 'home' && <HomePage recipes={state.recipes} openRecipe={openRecipe} saveSuggestion={adoptRecipe} newRecipe={newRecipe} navigate={target => target === 'catalog' ? openCatalog() : go(target)}/>}
+              {page === 'catalog' && <WorldCatalog recipes={catalogRecipes} loading={catalogLoading} error={catalogError} onOpen={openRecipe} onRetry={openCatalog}/>}
               {page === 'notebook' && <Notebook recipes={state.recipes} collections={state.collections} onSaveCollection={saveCollection} openRecipe={openRecipe} newRecipe={newRecipe}/>}
               {page === 'pantry' && <Pantry recipes={state.recipes} ingredients={ingredients} openRecipe={openRecipe}/>}
               {page === 'shopping' && <Shopping items={state.shopping} onToggle={toggleShopping} onClear={clearShopping}/>}
               {page === 'settings' && isAdmin && <Settings state={state} scope={scope} onImport={importBackup} onInvalid={() => notify('Este arquivo não parece ser um backup do Rancho da Cozinha.', 'warn')} configured={configured}/>}
               {page === 'auth' && <Auth session={session} onDone={() => go('home')} onSettings={isAdmin ? () => go('settings') : undefined}/>}
               {page === 'form' && editing && <RecipeForm recipe={editing} ingredients={ingredients} scope={scope} onDraft={saveDraft} onSave={saveRecipe} onSaved={recipeSaved} onCancel={() => go(editing.title ? 'recipe' : 'notebook')} onIngredientCreate={addPersonal}/>}
-              {page === 'recipe' && selected && <RecipeView recipe={selected} catalog={Boolean(selectedFromCatalog && !selectedFromNotebook)} logs={state.cookLogs.filter(log => log.recipeId === selected.id)} onBack={() => go(selectedFromCatalog && !selectedFromNotebook ? 'home' : 'notebook')} onEdit={() => { setEditing(selected); go('form') }} onDelete={() => removeRecipe(selected)} onFavorite={() => toggleFavorite(selected)} onRate={rating => rateRecipe(selected, rating)} onShare={() => shareRecipe(selected)} onSaveToNotebook={() => adoptRecipe(selected)} onKitchen={() => go('kitchen', 'kitchen')} onShopping={() => toShopping(selected)} onLog={addLog}/>}
+              {page === 'recipe' && selected && <RecipeView recipe={selected} catalog={Boolean((selectedFromCatalog || selectedFromWorld) && !selectedFromNotebook)} backLabel={recipeReturnPage === 'catalog' ? 'Voltar ao catálogo' : recipeReturnPage === 'home' ? 'Voltar ao início' : recipeReturnPage === 'pantry' ? 'Voltar à despensa' : 'Voltar ao caderno'} logs={state.cookLogs.filter(log => log.recipeId === selected.id)} onBack={() => go(recipeReturnPage)} onEdit={() => { setEditing(selected); go('form') }} onDelete={() => removeRecipe(selected)} onFavorite={() => toggleFavorite(selected)} onRate={rating => rateRecipe(selected, rating)} onShare={() => shareRecipe(selected)} onSaveToNotebook={() => adoptRecipe(selected)} onKitchen={() => go('kitchen', 'kitchen')} onShopping={() => toShopping(selected)} onLog={addLog}/>}
               {page === 'recipe' && !selected && <main className="page"><EmptyNotebook newRecipe={newRecipe}/></main>}
-              {page === 'kitchen' && selected && <Kitchen recipe={selected} catalog={Boolean(selectedFromCatalog && !selectedFromNotebook)} onClose={() => go('recipe', 'open')} onLog={addLog} onRate={rating => rateRecipe(selected, rating)} onSave={() => adoptRecipe(selected)}/>}
+              {page === 'kitchen' && selected && <Kitchen recipe={selected} catalog={Boolean((selectedFromCatalog || selectedFromWorld) && !selectedFromNotebook)} onClose={() => go('recipe', 'open')} onLog={addLog} onRate={rating => rateRecipe(selected, rating)} onSave={() => adoptRecipe(selected)}/>}
             </motion.div>
           </AnimatePresence>
           {page !== 'kitchen' && <Footer navigate={target => go(target)} newRecipe={newRecipe}/>}
@@ -279,7 +296,7 @@ function ProfileAvatar({ session, className = '' }: { session: Session; classNam
 }
 
 function Header({ page, navigate, menu, setMenu, session, isAdmin, syncStatus, pending, onSync }: { page: Page; navigate: (p: Page) => void; menu: boolean; setMenu: (v: boolean) => void; session: Session; isAdmin: boolean; syncStatus: SyncStatus; pending: number; onSync: () => void }) {
-  const nav: [Page, string, React.ReactNode][] = [['home', 'Início', <Home size={18}/>], ['notebook', 'Caderno', <BookOpen size={18}/>], ['pantry', 'Despensa', <UtensilsCrossed size={18}/>], ['shopping', 'Compras', <ShoppingBasket size={18}/>]]
+  const nav: [Page, string, React.ReactNode][] = [['home', 'Início', <Home size={18}/>], ['catalog', 'Explorar', <Search size={18}/>], ['notebook', 'Caderno', <BookOpen size={18}/>], ['pantry', 'Despensa', <UtensilsCrossed size={18}/>], ['shopping', 'Compras', <ShoppingBasket size={18}/>]]
   if (isAdmin) nav.push(['settings', 'Ajustes', <Archive size={18}/>])
   const name = String(session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Cozinheiro')
   return <><div className="gingham-bar"/><header className="site-header"><button className="brand" onClick={() => navigate('home')}><RanchMark size={54}/><span><strong>Rancho da Cozinha</strong><small>receitas da casa desde sempre</small></span></button>
@@ -339,7 +356,7 @@ function HomePage({ recipes, openRecipe, saveSuggestion, newRecipe, navigate }: 
   return <main className="page home-page">
     <motion.section className="home-command" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: ink }}>
       <div><span className="eyebrow">Sua cozinha, direto ao ponto</span><h1>O que vamos <span className="scribble">preparar<svg viewBox="0 0 200 18" preserveAspectRatio="none" aria-hidden="true"><path d="M3 12.5c38-7 81-9.5 121-6.2 27 2.2 49 .8 73-4.6"/></svg></span>?</h1></div>
-      <div><button className="button" onClick={newRecipe}><Plus size={18}/> Nova receita</button><button className="button button-paper" onClick={() => navigate('pantry')}>Cozinhar com o que tenho</button></div>
+      <div><button className="button" onClick={newRecipe}><Plus size={18}/> Nova receita</button><button className="button button-paper" onClick={() => navigate('catalog')}><Search size={18}/> Explorar 789 receitas</button><button className="button button-paper" onClick={() => navigate('pantry')}>Cozinhar com o que tenho</button></div>
     </motion.section>
 
     <section className="daily smart-daily" ref={daily}>
@@ -377,7 +394,7 @@ function HomePage({ recipes, openRecipe, saveSuggestion, newRecipe, navigate }: 
 
     <section className="home-section tasting-section"><div className="section-row"><div><span className="eyebrow">Provado e aprovado</span><h2>Varal de provas do Rancho</h2><p>{momentSentence(moment)}: as primeiras fichas do varal combinam com agora.</p></div><Tally count={Object.keys(ranchReviews).length} label="fichas julgadas"/></div><ReviewLine picks={picks} onOpen={openRecipe}/></section>
 
-    <section className="home-section catalog-section"><div className="section-row"><div><span className="eyebrow">Base brasileira do Rancho</span><h2>Sabores de várias regiões</h2><p>Receitas selecionadas e prontas para entrar no seu caderno.</p></div><Tally count={brazilianRecipes.length} label="receitas na base"/></div>
+    <section className="home-section catalog-section"><div className="section-row"><div><span className="eyebrow">Base brasileira do Rancho</span><h2>Sabores de várias regiões</h2><p>Receitas selecionadas e prontas para entrar no seu caderno.</p><button className="text-button" onClick={() => navigate('catalog')}>Explorar o acervo completo →</button></div><Tally count={brazilianRecipes.length} label="fichas brasileiras"/></div>
       <motion.div className="catalog-grid" {...inView} variants={stack(0.07)}>{brazilianRecipes.filter(item => item.id !== picks[0].recipe.id).slice(0, 6).map(item => <CatalogCard key={item.id} item={item} onOpen={() => openRecipe(item)}/>)}</motion.div>
     </section>
 

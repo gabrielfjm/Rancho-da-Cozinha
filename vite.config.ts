@@ -16,6 +16,14 @@ export default defineConfig({
         { src: '/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
       ]
     },
-    workbox: { importScripts: ['sw-alarm.js'], navigateFallback: '/index.html', globPatterns: ['**/*.{js,css,html,svg,png,woff2}'] }
+    workbox: {
+      importScripts: ['sw-alarm.js'], navigateFallback: '/index.html',
+      globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+      runtimeCaching: [{
+        urlPattern: /^https:\/\/(?:www\.)?themealdb\.com\/images\/media\/meals\//,
+        handler: 'CacheFirst', options: { cacheName: 'rancho-recipe-photos',
+          expiration: { maxEntries: 80, maxAgeSeconds: 30 * 24 * 60 * 60 } }
+      }]
+    }
   })]
 })

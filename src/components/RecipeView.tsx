@@ -14,7 +14,7 @@ import { HandStars, ReviewCard, Rosette } from './RanchReview'
 import { UtensilRack } from './Utensils'
 
 function measure(item: RecipeIngredient, factor: number, metric: boolean) {
-  if (item.amount === null) return 'a gosto'
+  if (item.amount === null) return item.note ? '' : 'a gosto'
   if (metric) {
     const grams = gramsFor(item.amount * factor, item.unit, item.gramsPerUnit)
     if (grams !== null) return `${prettyAmount(grams)} ${item.unit === 'ml' || item.unit === 'l' ? 'ml' : 'g'}`
@@ -31,8 +31,8 @@ function FavoriteButton({ on, onToggle }: { on: boolean; onToggle: () => Promise
   </motion.button>
 }
 
-export function RecipeView({ recipe, logs, catalog = false, onBack, onEdit, onDelete, onFavorite, onRate, onShare, onSaveToNotebook, onKitchen, onShopping, onLog }: {
-  recipe: Recipe; logs: CookLog[]; catalog?: boolean; onBack: () => void; onEdit: () => void; onDelete: () => Promise<unknown>
+export function RecipeView({ recipe, logs, catalog = false, backLabel, onBack, onEdit, onDelete, onFavorite, onRate, onShare, onSaveToNotebook, onKitchen, onShopping, onLog }: {
+  recipe: Recipe; logs: CookLog[]; catalog?: boolean; backLabel?: string; onBack: () => void; onEdit: () => void; onDelete: () => Promise<unknown>
   onFavorite: () => Promise<unknown>; onRate: (rating: number) => Promise<unknown>; onShare: () => Promise<unknown>; onSaveToNotebook?: () => Promise<unknown>
   onKitchen: () => void; onShopping: () => Promise<boolean>; onLog: (log: CookLog) => Promise<boolean>
 }) {
@@ -50,15 +50,15 @@ export function RecipeView({ recipe, logs, catalog = false, onBack, onEdit, onDe
   function toggle(id: string) { setChecked(current => current.includes(id) ? current.filter(x => x !== id) : [...current, id]) }
 
   return <main className="page view-page">
-    <div className="recipe-actions no-print"><button className="text-button" onClick={onBack}><ArrowLeft size={17}/> {catalog ? 'Voltar às sugestões' : 'Voltar ao caderno'}</button><div>{catalog
+    <div className="recipe-actions no-print"><button className="text-button" onClick={onBack}><ArrowLeft size={17}/> {backLabel ?? 'Voltar ao caderno'}</button><div>{catalog
       ? <BusyButton className="button button-small" busyLabel="Copiando a ficha…" onClick={() => onSaveToNotebook?.()}><Plus size={17}/> Guardar no meu caderno</BusyButton>
       : <><FavoriteButton on={recipe.favorite} onToggle={onFavorite}/><button className="icon-button" onClick={onEdit} aria-label="Editar receita"><Pencil size={18}/></button><button className="icon-button" onClick={() => window.print()} aria-label="Imprimir ou salvar em PDF"><Printer size={18}/></button><BusyButton className="icon-button" busyLabel="" onClick={onShare} aria-label="Compartilhar receita"><Share2 size={18}/></BusyButton><ConfirmButton label="Excluir receita" icon={<Trash2 size={18}/>} question="Arrancar esta ficha do caderno? Não dá para desfazer." confirmLabel="Arrancar a ficha" busyLabel="Arrancando…" onConfirm={onDelete}/></>}</div></div>
 
     <header className="recipe-cover">
       <motion.div className="recipe-cover-copy" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: ink, delay: 0.1 }}>
-        <span className="eyebrow">{recipe.category} · {catalog ? 'Base brasileira do Rancho' : 'Ficha da casa'}</span>
+        <span className="eyebrow">{recipe.category} · {catalog ? recipe.originalLanguage ? 'Acervo internacional' : 'Base brasileira do Rancho' : 'Ficha da casa'}</span>
         <h1>{recipe.title}</h1><p>{recipe.description}</p>
-        <div className="cover-meta"><span><Clock3 size={16}/>{recipe.prepMinutes + recipe.cookMinutes} min</span><span><ChefHat size={16}/>{recipe.difficulty} chapéu{recipe.difficulty > 1 ? 's' : ''}</span>
+        <div className="cover-meta"><span><Clock3 size={16}/>{recipe.prepMinutes + recipe.cookMinutes ? `${recipe.prepMinutes + recipe.cookMinutes} min` : 'Tempo não informado'}</span>{recipe.difficultyKnown !== false && <span><ChefHat size={16}/>{recipe.difficulty} chapéu{recipe.difficulty > 1 ? 's' : ''}</span>}
           {review && <button type="button" className="cover-score" onClick={() => document.getElementById('parecer')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}><Star size={16} fill="currentColor"/>Nota do Rancho {scoreLabel(review.score)}</button>}
           {!catalog && <span className="cover-rating no-print"><small>Sua nota</small><HandStars value={recipe.rating} size={19} label="Sua nota para esta receita" onRate={n => void onRate(n === recipe.rating ? 0 : n)}/></span>}
         </div>
@@ -69,10 +69,10 @@ export function RecipeView({ recipe, logs, catalog = false, onBack, onEdit, onDe
       </motion.div>
     </header>
 
-    {recipe.story && <motion.aside className="story-note" initial={{ opacity: 0, y: -10, rotate: -2 }} animate={{ opacity: 1, y: 0, rotate: -0.4 }} transition={{ ...paper, delay: 0.3 }}><span>Do caderno</span><p>{recipe.story}</p>{recipe.source && <small>Fonte: {recipe.source}</small>}</motion.aside>}
+    {recipe.story && <motion.aside className="story-note" initial={{ opacity: 0, y: -10, rotate: -2 }} animate={{ opacity: 1, y: 0, rotate: -0.4 }} transition={{ ...paper, delay: 0.3 }}><span>Do caderno</span><p>{recipe.story}</p>{recipe.source && <small>Fonte: {recipe.sourceUrl?.startsWith('https://') ? <a href={recipe.sourceUrl} target="_blank" rel="noreferrer">{recipe.source}</a> : recipe.source}</small>}</motion.aside>}
 
     <div className="view-toolbar no-print">
-      <label>Porções <div className="counter"><button type="button" onClick={() => setServings(Math.max(1, servings - 1))} aria-label="Diminuir porções">−</button><span className="counter-window"><AnimatePresence mode="popLayout" initial={false}><motion.strong key={servings} initial={{ y: -14, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 14, opacity: 0 }} transition={{ duration: 0.2 }}>{servings}</motion.strong></AnimatePresence></span><button type="button" onClick={() => setServings(servings + 1)} aria-label="Aumentar porções">+</button></div></label>
+      <label>{recipe.servingsKnown === false ? 'Multiplicar receita' : 'Porções'} <div className="counter"><button type="button" onClick={() => setServings(Math.max(1, servings - 1))} aria-label="Diminuir porções">−</button><span className="counter-window"><AnimatePresence mode="popLayout" initial={false}><motion.strong key={servings} initial={{ y: -14, opacity: 0 }} animate={{ opacity: 1, y: 0 }} exit={{ y: 14, opacity: 0 }} transition={{ duration: 0.2 }}>{servings}</motion.strong></AnimatePresence></span><button type="button" onClick={() => setServings(servings + 1)} aria-label="Aumentar porções">+</button></div></label>
       <label className="switch-label"><input type="checkbox" checked={metric} onChange={e => setMetric(e.target.checked)}/><span className="switch-track" aria-hidden="true"><i/></span> Medidas métricas</label>
       <button className="button button-small" onClick={onKitchen}><BookOpen size={17}/> Modo cozinha</button>
     </div>
