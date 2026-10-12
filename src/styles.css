@@ -880,3 +880,15 @@ body{background-color:var(--cream);background-image:linear-gradient(rgba(255,255
   .clock-main{width:104px;height:104px}
 }
 @media(max-height:640px){.clock-face-wrap{width:min(60vw,32vh)}.clock-step{display:none}}
+
+/* Instalação no telefone */
+.install-app{width:min(480px,100%);display:grid;gap:12px;margin-top:22px;padding:18px;border:1px solid #c9af83;border-radius:6px;background:#fff8e9;box-shadow:0 5px 18px rgba(72,39,20,.09)}
+.install-app-heading{display:flex;align-items:flex-start;gap:11px;color:var(--leather)}
+.install-app-heading>svg{flex:none;margin-top:2px;color:var(--barn)}
+.install-app-heading strong{display:block;font:700 19px "Zilla Slab"}
+.install-app-heading span{display:block;margin-top:3px;font-size:13px;line-height:1.5;color:var(--muted)}
+.install-app .button{justify-self:start}
+.install-app-instructions{margin:0;padding:10px 12px;border-left:3px solid var(--wheat);background:#f5ead1;font-size:13px;line-height:1.5}
+.profile-form .install-app{margin-top:25px}
+:root[data-theme="dark"] .install-app{background:#34251b;border-color:#76523a}
+:root[data-theme="dark"] .install-app-instructions{background:#493424}

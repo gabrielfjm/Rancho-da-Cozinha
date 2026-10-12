@@ -27,6 +27,7 @@ import { FavoriteToggle, HatPicker, PaperSelect, useMedia } from './components/F
 import { WeatherTicket } from './components/WeatherTicket'
 import { Footer } from './components/Footer'
 import { Dock } from './components/Dock'
+import { InstallApp } from './components/InstallApp'
 import { Kitchen } from './components/Kitchen'
 import { AlarmCurtain, ClockScreen, TimerTray } from './components/Timers'
 import { openClock, snoozeTimer, startTimerEngine, stopTimer } from './lib/timers'
@@ -70,19 +71,21 @@ export default function App() {
   async function refresh(nextScope: string) { setState(await loadState(nextScope)) }
   async function countPending(nextScope = scopeRef.current) { setPending(await pendingChanges(nextScope)) }
   // Uma sincronização por vez; pedidos feitos no meio do caminho viram uma única rodada extra.
-  async function runSync(nextScope = scopeRef.current) {
-    if (nextScope === 'guest' || !configured) return
+  async function runSync(nextScope = scopeRef.current): Promise<boolean> {
+    if (nextScope === 'guest' || !configured) return false
     const job = syncJob.current
-    if (!navigator.onLine) { setSyncStatus('offline'); void countPending(nextScope); return }
-    if (job.running) { job.again = true; return }
+    if (!navigator.onLine) { setSyncStatus('offline'); void countPending(nextScope); return false }
+    if (job.running) { job.again = true; return false }
     job.running = true; setSyncStatus('syncing')
     try {
       do { job.again = false; await sync(nextScope) } while (job.again)
-      await refresh(nextScope); setSyncStatus('idle')
+      if (scopeRef.current === nextScope) { await refresh(nextScope); setSyncStatus('idle') }
+      return true
     } catch (error) {
       console.error('Falha ao sincronizar o caderno', error)
       setSyncStatus(navigator.onLine ? 'error' : 'offline')
-    } finally { job.running = false; void countPending(nextScope) }
+      return false
+    } finally { job.running = false; if (scopeRef.current === nextScope) void countPending(nextScope) }
   }
   function scheduleSync(delay = 900) {
     if (scopeRef.current === 'guest' || !configured) return
@@ -98,9 +101,14 @@ export default function App() {
       if (!alive) return
       const nextScope = current?.user.id ?? 'guest'
       setSession(current); adoptScope(nextScope)
-      if (current) await seedAccount(nextScope)
       await refresh(nextScope)
-      if (current) await runSync(nextScope)
+      if (current) {
+        if (await runSync(nextScope)) {
+          await seedAccount(nextScope)
+          await refresh(nextScope)
+          await runSync(nextScope)
+        }
+      }
       const sharedId = new URLSearchParams(location.search).get('share')
       if (current && sharedId && supabase) {
         const { data } = await supabase.from('recipes').select('payload').eq('id', sharedId).eq('shared', true).is('deleted_at', null).maybeSingle()
@@ -111,12 +119,22 @@ export default function App() {
     void boot()
     const auth = supabase?.auth.onAuthStateChange(async (_event, next) => {
       setSession(next); const nextScope = next?.user.id ?? 'guest'; adoptScope(nextScope)
-      if (next) await seedAccount(nextScope)
-      await refresh(nextScope); if (next) void runSync(nextScope); setAuthReady(true)
+      await refresh(nextScope)
+      if (next) void runSync(nextScope).then(async synced => {
+        if (synced && scopeRef.current === nextScope) {
+          await seedAccount(nextScope)
+          await refresh(nextScope)
+          await runSync(nextScope)
+        }
+      })
+      setAuthReady(true)
     })
     const connection = () => { if (navigator.onLine) void runSync(); else { setSyncStatus('offline'); void countPending() } }
+    const foreground = () => { if (!document.hidden && navigator.onLine) void runSync() }
+    const interval = window.setInterval(() => { if (!document.hidden && navigator.onLine) void runSync() }, 60_000)
     addEventListener('online', connection); addEventListener('offline', connection)
-    return () => { alive = false; auth?.data.subscription.unsubscribe(); removeEventListener('online', connection); removeEventListener('offline', connection) }
+    document.addEventListener('visibilitychange', foreground)
+    return () => { alive = false; auth?.data.subscription.unsubscribe(); removeEventListener('online', connection); removeEventListener('offline', connection); document.removeEventListener('visibilitychange', foreground); window.clearInterval(interval) }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (!isAdmin && page === 'settings') setPage('home') }, [isAdmin, page])
   // Relógios da cozinha: o motor roda o app inteiro, e as notificações conversam com ele pelo service worker.
@@ -511,7 +529,7 @@ function ProfilePage({ session, onDone, onSettings }: { session: Session; onDone
   return <main className="page profile-page"><motion.section className="profile-card profile-editor" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={paper}><div className="profile-side"><div className={`profile-photo${saving ? ' is-busy' : ''}`}><ProfileAvatar session={session} className="profile-avatar"/><label className="photo-action"><Camera size={18}/> Trocar foto<input type="file" accept="image/*" disabled={saving} onChange={event => event.target.files?.[0] && void photo(event.target.files[0])}/></label></div><h2>{name || 'Seu perfil'}</h2><p>{session.user.email}</p><div className="profile-trust"><ShieldCheck size={18}/><span>Conta protegida e conteúdo particular</span></div></div>
     <form className="profile-form" onSubmit={event => void save(event)}><span className="eyebrow">Dados cadastrais</span><h1>Seu lugar à mesa</h1><p>Atualize seu nome, e-mail e foto. As recomendações usam a localização atual do aparelho.</p><div className="form-grid"><label>Nome completo<input value={name} onChange={event => setName(event.target.value)} placeholder="Como devemos chamar você?"/></label><label>E-mail<input type="email" required value={email} onChange={event => setEmail(event.target.value)}/></label></div>
       <AnimatePresence mode="wait">{message && <motion.p key={message} className="profile-message" role="status" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>{message}</motion.p>}</AnimatePresence>
-      <div className="profile-actions"><button className="button" type="submit" disabled={saving} aria-busy={saving}>{saving ? <><Stir/> Salvando…</> : 'Salvar alterações'}</button><button className="button button-outline" type="button" onClick={async () => { await supabase?.auth.signOut(); onDone() }}><LogOut size={18}/> Sair da conta</button>{onSettings && <button className="button button-paper" type="button" onClick={onSettings}><Archive size={18}/> Ajustes e backup</button>}</div></form>
+      <div className="profile-actions"><button className="button" type="submit" disabled={saving} aria-busy={saving}>{saving ? <><Stir/> Salvando…</> : 'Salvar alterações'}</button><button className="button button-outline" type="button" onClick={async () => { await supabase?.auth.signOut(); onDone() }}><LogOut size={18}/> Sair da conta</button>{onSettings && <button className="button button-paper" type="button" onClick={onSettings}><Archive size={18}/> Ajustes e backup</button>}</div><InstallApp/></form>
   </motion.section></main>
 }
 
@@ -544,7 +562,7 @@ function Auth({ session, onDone, onSettings }: { session: Session | null; onDone
       <motion.button variants={rise} className="text-button auth-switch" type="button" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setMessage('') }}>{mode === 'login' ? 'Primeira vez por aqui? Criar conta' : 'Já tenho uma conta'}</motion.button>
       <AnimatePresence>{message && <motion.p key={message} role="status" className="auth-message" initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>{message}</motion.p>}</AnimatePresence>
       <motion.div variants={rise} className="auth-security"><ShieldCheck size={17}/><span>Seu conteúdo só aparece depois do login.</span></motion.div>
-    </motion.form><a className="auth-credit" href="https://www.jessbranding.com.br" target="_blank" rel="noreferrer">Experiência criada por <strong>Jess Branding</strong></a></section>
+    </motion.form><InstallApp/><a className="auth-credit" href="https://www.jessbranding.com.br" target="_blank" rel="noreferrer">Experiência criada por <strong>Jess Branding</strong></a></section>
   </motion.main>
 }
 
