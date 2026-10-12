@@ -15,6 +15,12 @@ Caderno de receitas pessoal com visual inspirado em fichas antigas, diners e coz
 
 O plano de telas e o modelo de dados estão em [docs/PLANO.md](docs/PLANO.md). O schema versionado está em [supabase/migrations/202610100001_initial.sql](supabase/migrations/202610100001_initial.sql).
 
+## Instalar no telefone
+
+Abra `https://rancho-da-cozinha.vercel.app` no celular. Na tela de entrada, toque em **Instalar aplicativo**. Se o navegador não mostrar essa opção, toque em **Como instalar** para ver o caminho no menu do Chrome ou no compartilhamento do Safari. Depois, abra o ícone do Rancho na tela inicial e entre com a mesma conta usada no site.
+
+O aplicativo instalado usa a mesma versão publicada no site: procura atualizações quando volta ao primeiro plano e periodicamente enquanto está aberto. Receitas e lista de compras são sincronizadas com o Supabase ao abrir, ao reconectar e a cada minuto em primeiro plano. Alterações feitas sem conexão ficam no aparelho e são enviadas quando a internet volta.
+
 ## Rodar localmente
 
 Requer Node.js 20 ou superior.
