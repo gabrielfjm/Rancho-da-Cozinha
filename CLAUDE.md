@@ -37,6 +37,13 @@
 - `src/lib/store.ts`: cache local, Supabase e upload de imagens.
 - `src/styles.css`: identidade visual e responsividade.
 
+## App Android
+
+- O APK é uma Trusted Web Activity (Bubblewrap): abre `https://rancho-da-cozinha.vercel.app` em tela cheia, então mudanças no site chegam ao app sem reinstalar.
+- Pacote `app.vercel.rancho_da_cozinha.twa`. O projeto Gradle e a chave de assinatura ficam fora do repositório, em `../android/`; nunca versione a chave.
+- `public/.well-known/assetlinks.json` precisa conter a impressão SHA-256 da chave; sem ele o app mostra a barra de endereço.
+- `public/rancho-da-cozinha.apk` é o arquivo baixado pelo botão “Baixar o app Android”. Só gere um novo APK se mudar nome, ícone ou cores; aumente `appVersionCode` ao fazer isso.
+
 ## Variáveis necessárias
 
 - `VITE_SUPABASE_URL`

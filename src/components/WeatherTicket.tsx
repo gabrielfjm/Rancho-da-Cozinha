@@ -34,7 +34,7 @@ const placeName = (city: string) => city.replace(/^Região Metropolitana d[aeo]s
 
 /** Boletim do tempo do Rancho: canhoto escuro com o céu, papel com dia, temperatura e lugar. */
 export function WeatherTicket({ weather, state, moment, onLocate }: { weather?: WeatherContext; state: 'loading' | 'ready' | 'denied'; moment: Moment; onLocate: () => void }) {
-  const sky = skyFor(state === 'ready' ? weather : undefined, moment.part === 'noite', state === 'loading')
+  const sky = skyFor(state === 'ready' ? weather : undefined, moment.meal === 'jantar' || moment.meal === 'madrugada', state === 'loading')
   return <div className={`weather-ticket ${state}`} role="status">
     <span className="weather-stub"><SkyGlyph sky={sky}/></span>
     <span className="weather-copy">

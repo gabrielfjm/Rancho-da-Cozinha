@@ -9,7 +9,7 @@ import { CATEGORIES, INGREDIENT_CATEGORIES } from './types'
 import { deleteEntity, configured, loadState, pendingChanges, saveEntity, seedAccount, supabase, sync, uploadAvatar } from './lib/store'
 import { normalize, prettyAmount, uid } from './lib/format'
 import { brazilianRecipes, type BrazilianRecipe } from './data/brazilianRecipes'
-import { currentMoment, momentSentence, rankForMoment, rankRecommendations } from './lib/moment'
+import { currentMoment, mealInfo, momentSentence, rankForMoment, rankRecommendations, type Meal } from './lib/moment'
 import { ranchReviews } from './data/ranchReviews'
 import { calorieLabel } from './lib/nutrition'
 import { refreshWeather, weatherAtCurrentLocation, type WeatherContext } from './lib/weather'
@@ -25,6 +25,7 @@ import { MiniReview, ReviewLine, Rosette } from './components/RanchReview'
 import { Pins, SignArrow, useRotation } from './components/Carousel'
 import { FavoriteToggle, HatPicker, PaperSelect, useMedia } from './components/Filters'
 import { WeatherTicket } from './components/WeatherTicket'
+import { MealTabs } from './components/MealTabs'
 import { Footer } from './components/Footer'
 import { Dock } from './components/Dock'
 import { InstallApp } from './components/InstallApp'
@@ -337,7 +338,6 @@ const featureSwap = {
 function HomePage({ recipes, catalogRecipes, openRecipe, saveSuggestion, newRecipe, navigate }: { recipes: Recipe[]; catalogRecipes: Recipe[]; openRecipe: (r: Recipe) => void; saveSuggestion: (r: Recipe) => Promise<boolean>; newRecipe: () => void; navigate: (p: Page) => void }) {
   const [weather, setWeather] = useState<WeatherContext>()
   const [weatherState, setWeatherState] = useState<'loading' | 'ready' | 'denied'>('loading')
-  const [preferredRegion, setPreferredRegion] = useState(() => localStorage.getItem('rancho:regiao') || '')
   async function loadWeather() {
     setWeatherState('loading')
     try { setWeather(await weatherAtCurrentLocation()); setWeatherState('ready') }
@@ -351,8 +351,14 @@ function HomePage({ recipes, catalogRecipes, openRecipe, saveSuggestion, newReci
   }, [weather])
   const [now, setNow] = useState(() => new Date())
   useEffect(() => { const timer = setInterval(() => setNow(new Date()), 5 * 60 * 1000); return () => clearInterval(timer) }, [])
-  const moment = useMemo(() => currentMoment(weather, now, preferredRegion), [weather, now, preferredRegion])
-  const picks = useMemo(() => rankRecommendations(catalogRecipes, moment, now), [catalogRecipes, moment, now])
+  const moment = useMemo(() => currentMoment(weather, now), [weather, now])
+  // Aba escolhida à mão vale até a próxima refeição começar; depois volta a seguir o relógio.
+  const [chosenMeal, setChosenMeal] = useState<Meal>()
+  useEffect(() => { setChosenMeal(undefined) }, [moment.meal])
+  const meal = mealInfo(chosenMeal ?? moment.meal)
+  const isNow = meal.id === moment.meal
+  const mealMoment = useMemo(() => ({ ...moment, meal: meal.id }), [moment, meal.id])
+  const picks = useMemo(() => rankRecommendations(catalogRecipes, mealMoment, now), [catalogRecipes, mealMoment, now])
   const reviewPicks = useMemo(() => rankForMoment(brazilianRecipes, moment, now), [moment, now])
   const featured = useMemo(() => {
     let brazilianCount = 0
@@ -378,11 +384,12 @@ function HomePage({ recipes, catalogRecipes, openRecipe, saveSuggestion, newReci
     </motion.section>
 
     <section className="daily smart-daily" ref={daily}>
-      <div className="section-row"><div className="section-intro"><span className="eyebrow">Sugestão do Rancho para agora</span><h2>O prato certo para agora</h2><p>Ideias do acervo pelo horário e, com sua localização, pela região e pelo clima.</p></div>
-        <div className="weather-controls"><WeatherTicket weather={weather} state={weatherState} moment={moment} onLocate={() => void loadWeather()}/>
-          <label className="region-choice">Minha região <select value={preferredRegion} onChange={event => { const value = event.target.value; setPreferredRegion(value); if (value) localStorage.setItem('rancho:regiao', value); else localStorage.removeItem('rancho:regiao') }}><option value="">{preferredRegion ? 'Automática' : moment.region ? `Automática (${moment.region})` : 'Escolher região'}</option>{['Norte', 'Nordeste', 'Centro-Oeste', 'Sudeste', 'Sul'].map(region => <option key={region}>{region}</option>)}</select></label>
-        </div>
+      <div className="section-row"><div className="section-intro"><span className="eyebrow">Sugestão do Rancho por refeição</span><h2>{isNow ? `Agora é hora ${meal.of}` : `Ideias ${meal.for}`}</h2><p>{weather
+        ? moment.region ? `Pela hora, pelo clima daqui e pelos sabores do ${moment.region}.` : 'Pela hora e pelo clima daqui.'
+        : moment.region ? `Pela hora e pelos sabores do ${moment.region}. Libere a localização para considerar o clima.` : 'Pela hora do dia. Libere a localização para considerar também o clima e a sua região.'}</p></div>
+        <div className="weather-controls"><WeatherTicket weather={weather} state={weatherState} moment={moment} onLocate={() => void loadWeather()}/></div>
       </div>
+      <MealTabs value={meal.id} current={moment.meal} onChange={value => setChosenMeal(value === moment.meal ? undefined : value)}/>
       <div className="climate-stage" {...rotation.hoverProps}>
         <AnimatePresence mode="wait" initial={false} custom={direction.current}>
           <motion.article key={recommendation.id} className="climate-card" custom={direction.current} variants={featureSwap} initial="enter" animate="center" exit="exit"
@@ -406,7 +413,7 @@ function HomePage({ recipes, catalogRecipes, openRecipe, saveSuggestion, newReci
         {featured.length > 1 && <div className="climate-pager">
           <SignArrow small direction="prev" label="Sugestão anterior" onClick={() => rotation.goTo(rotation.index - 1)}/>
           <Pins count={featured.length} current={rotation.index} playing={rotation.playing} dwell={FEATURE_DWELL} onPick={rotation.goTo} label={index => `Ver sugestão ${index + 1}: ${featured[index].recipe.title}`}/>
-          <span>{rotation.index + 1} de {featured.length} ideias para agora</span>
+          <span>{rotation.index + 1} de {featured.length} ideias {isNow ? 'para agora' : meal.for}</span>
           <SignArrow small direction="next" label="Próxima sugestão" onClick={() => rotation.goTo(rotation.index + 1)}/>
         </div>}
       </div>

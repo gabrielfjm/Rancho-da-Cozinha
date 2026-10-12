@@ -910,6 +910,16 @@ body{background-color:var(--cream);background-image:linear-gradient(rgba(255,255
 
 /* Região escolhida manualmente quando a localização não está disponível. */
 .weather-controls{display:grid;justify-items:end;gap:9px}
-.region-choice{display:flex;align-items:center;gap:8px;color:var(--muted);font:700 12px "Zilla Slab"}
-.region-choice select{max-width:190px;padding:5px 8px;border:1px solid var(--line);border-radius:3px;background:var(--paper);color:var(--ink);font:700 13px "Zilla Slab"}
-@media(max-width:700px){.weather-controls{width:100%;justify-items:stretch}.region-choice{justify-content:flex-end}}
+@media(max-width:700px){.weather-controls{width:100%;justify-items:stretch}}
+/* Divisórias de fichário com as refeições do dia */
+.meal-tabs{display:flex;gap:6px;margin:4px 0 -1px;padding:6px 2px 0;overflow-x:auto;scrollbar-width:none;scroll-snap-type:x proximity;position:relative;z-index:1}
+.meal-tabs::-webkit-scrollbar{display:none}
+.meal-tabs button{position:relative;flex:1 0 auto;display:flex;align-items:center;justify-content:center;gap:7px;padding:11px 15px 10px;border:1px solid var(--line);border-bottom-color:var(--leather);border-radius:9px 9px 0 0;background:color-mix(in srgb,var(--paper) 70%,var(--cream));color:var(--leather);font:700 14px "Zilla Slab";white-space:nowrap;scroll-snap-align:center;overflow:hidden;transition:color .2s,transform .2s}
+.meal-tabs button:hover{transform:translateY(-2px);color:var(--barn)}
+.meal-tabs button>*:not(.meal-tab-ink){position:relative;z-index:1}
+.meal-tabs button.active{color:#fff8ea;border-color:var(--barn)}
+.meal-tabs button.active:hover{transform:none;color:#fff8ea}
+.meal-tab-ink{position:absolute;inset:0;z-index:0;background:var(--barn);box-shadow:inset 0 0 0 3px color-mix(in srgb,var(--barn) 70%,#000),inset 0 0 0 4px rgba(255,240,220,.35)}
+.meal-tabs small{font:400 17px/1 Caveat;color:var(--wheat);margin-left:-1px;transform:rotate(-4deg)}
+.meal-tabs button:not(.active) small{color:var(--barn)}
+@media(max-width:700px){.meal-tabs{margin-inline:-16px;padding-inline:16px}.meal-tabs button{flex:0 0 auto;padding:10px 13px 9px;font-size:13px}}

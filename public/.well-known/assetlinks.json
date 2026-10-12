@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "app.vercel.rancho_da_cozinha.twa",
+    "sha256_cert_fingerprints": ["1C:95:EB:8D:50:1A:6C:E2:A4:9C:D7:9F:91:11:4B:A5:52:DF:E0:55:0B:A5:81:02:A2:0D:7A:D9:AB:CD:45:5E"]
+  }
+}]
