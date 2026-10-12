@@ -1,7 +1,6 @@
-"""Create an offline recipe catalog from TheMealDB's official free API endpoints.
+"""Refresh the English source snapshot from TheMealDB's official free API.
 
-TheMealDB permits copying API content for development projects. The source and
-original language remain visible in the app. Run: python scripts/import_themealdb.py
+After importing, run scripts/translate_themealdb.py to update the pt-BR catalog.
 """
 
 from concurrent.futures import ThreadPoolExecutor
@@ -14,7 +13,7 @@ from urllib.request import Request, urlopen
 
 
 API = "https://www.themealdb.com/api/json/v1/1/search.php?f={}"
-OUTPUT = Path(__file__).resolve().parents[1] / "src/data/worldRecipes.json"
+OUTPUT = Path(__file__).resolve().parent / "data/themealdb-en.json"
 CURATED_IDS = {"53482", "53481", "53483", "53476", "53485", "53475", "53477", "53478", "53484"}
 
 
@@ -32,7 +31,7 @@ def fetch(letter: str) -> list[dict]:
 
 
 def steps(text: str) -> list[str]:
-    clean = re.sub(r"<br\s*/?>", "\n", text or "", flags=re.I)
+    clean = re.sub(r"<br\s*/?>", "\n", text or "", flags=re.I).replace("\u200b", "").replace("\ufeff", "")
     clean = re.sub(r"<[^>]+>", "", clean).replace("\r", "\n")
     lines = [re.sub(r"^\s*(?:step\s*)?\d+[.):\-]\s*", "", line, flags=re.I).strip(" -\t")
              for line in clean.split("\n")]
@@ -80,6 +79,7 @@ def main() -> None:
     recipes.sort(key=lambda item: item["title"].casefold())
     if len(recipes) < 500:
         raise RuntimeError(f"Only {len(recipes)} recipes returned; keeping the existing catalog")
+    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT.write_text(json.dumps({"source": "TheMealDB", "retrievedAt": date.today().isoformat(),
                                   "recipes": recipes}, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     print(f"Imported {len(recipes)} recipes from {len(by_id)} meals into {OUTPUT}")

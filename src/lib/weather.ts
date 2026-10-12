@@ -4,6 +4,8 @@ export type WeatherContext = {
   weatherCode: number
   city: string
   region?: string
+  regionCode?: string
+  countryCode?: string
   latitude: number
   longitude: number
 }
@@ -16,26 +18,35 @@ function position(): Promise<GeolocationPosition> {
   }))
 }
 
-export async function weatherAtCurrentLocation(): Promise<WeatherContext> {
-  if (!navigator.geolocation) throw new Error('Este aparelho não oferece localização.')
-  const current = await position()
-  const latitude = Number(current.coords.latitude.toFixed(4))
-  const longitude = Number(current.coords.longitude.toFixed(4))
-  const [weatherResponse, placeResponse] = await Promise.all([
-    fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,apparent_temperature,weather_code&timezone=auto`),
-    fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=pt`)
-  ])
-  if (!weatherResponse.ok) throw new Error('Não foi possível consultar o clima agora.')
-  const weather = await weatherResponse.json() as { current?: { temperature_2m?: number; apparent_temperature?: number; weather_code?: number } }
-  const place = placeResponse.ok ? await placeResponse.json() as { city?: string; locality?: string; principalSubdivision?: string } : {}
+async function forecast(latitude: number, longitude: number) {
+  const response = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,apparent_temperature,weather_code&timezone=auto`)
+  if (!response.ok) throw new Error('Não foi possível consultar o clima agora.')
+  const weather = await response.json() as { current?: { temperature_2m?: number; apparent_temperature?: number; weather_code?: number } }
   const temperature = weather.current?.temperature_2m
   if (typeof temperature !== 'number') throw new Error('A temperatura não ficou disponível.')
+  return { temperature, apparentTemperature: weather.current?.apparent_temperature ?? temperature, weatherCode: weather.current?.weather_code ?? 0 }
+}
+
+export async function refreshWeather(previous: WeatherContext): Promise<WeatherContext> {
+  return { ...previous, ...await forecast(previous.latitude, previous.longitude) }
+}
+
+export async function weatherAtCurrentLocation(): Promise<WeatherContext> {
+  if (!navigator.geolocation) throw new Error('Este aparelho não oferece localização.')
+  const location = await position()
+  const latitude = Number(location.coords.latitude.toFixed(4))
+  const longitude = Number(location.coords.longitude.toFixed(4))
+  const [current, placeResponse] = await Promise.all([
+    forecast(latitude, longitude),
+    fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=pt`)
+  ])
+  const place = placeResponse.ok ? await placeResponse.json() as { city?: string; locality?: string; principalSubdivision?: string; principalSubdivisionCode?: string; countryCode?: string } : {}
   return {
-    temperature,
-    apparentTemperature: weather.current?.apparent_temperature ?? temperature,
-    weatherCode: weather.current?.weather_code ?? 0,
+    ...current,
     city: place.city || place.locality || 'Sua região',
     region: place.principalSubdivision,
+    regionCode: place.principalSubdivisionCode,
+    countryCode: place.countryCode,
     latitude,
     longitude
   }

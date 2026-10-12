@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowLeft, ArrowRight, Check, Maximize2, Minimize2, Plus, X } from 'lucide-react'
 import type { CookLog, Recipe } from '../types'
-import { normalize, prettyAmount, uid } from '../lib/format'
+import { amountUnit, normalize, prettyAmount, uid } from '../lib/format'
 import { paper, stamp } from '../lib/motion'
 import { BusyButton, CountUp, InkBox } from './Feedback'
 import { HandStars } from './RanchReview'
@@ -120,7 +120,7 @@ export function Kitchen({ recipe, catalog, onClose, onLog, onRate, onSave }: {
               {step.timerMinutes ? <span className="cook-badge">{step.timerMinutes} min no relógio</span> : null}
             </div>
             <p className="cook-text">{step.text || 'Este passo ainda não tem descrição. Dá para completar no editor da receita.'}</p>
-            {uses.length > 0 && <div className="cook-uses"><span>Neste passo</span>{uses.map(item => <em key={item.id}><b>{prettyAmount(item.amount)}{item.amount !== null ? ` ${item.unit}` : ''}</b> {item.name}</em>)}</div>}
+            {uses.length > 0 && <div className="cook-uses"><span>Neste passo</span>{uses.map(item => <em key={item.id}><b>{prettyAmount(item.amount)}{item.amount !== null ? ` ${amountUnit(item.unit, item.amount)}` : ''}</b> {item.name}</em>)}</div>}
             {step.photo && <Photo value={step.photo} alt={`Passo ${index + 1}`} className="cook-photo"/>}
             {step.timerMinutes ? <button type="button" className={`cook-timer${stepTimer ? ' is-running' : ''}`} onClick={() => stepTimer ? openClock(stepTimer.id) : start(step.timerMinutes!)}><ClockIcon/>{stepTimer ? <>{stepTimer.firedAt ? 'O relógio tocou' : `Ver o relógio · ${clock(remaining(stepTimer, now))}`}</> : <>Dar corda no relógio · {step.timerMinutes} min</>}</button> : null}
             {index < last
@@ -148,7 +148,7 @@ export function Kitchen({ recipe, catalog, onClose, onLog, onRate, onSave }: {
       <motion.aside key="drawer" className="cook-drawer" aria-label="Ingredientes" initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%', transition: { duration: 0.22 } }} transition={paper}>
         <header><div><small>Separe tudo na bancada</small><h2>Ingredientes</h2></div><button type="button" className="cook-icon dark" onClick={() => setDrawer(false)} aria-label="Fechar ingredientes"><X size={20}/></button></header>
         <ul>{recipe.ingredients.map((item, n) => { const done = gathered.includes(item.id); return <motion.li key={item.id} initial={{ opacity: 0, x: 18 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.08 + Math.min(n, 12) * 0.03 }}>
-          <label className={`ink-check${done ? ' struck' : ''}`}><input type="checkbox" checked={done} onChange={() => setGathered(g => done ? g.filter(x => x !== item.id) : [...g, item.id])}/><InkBox/><span className="ink-text"><strong>{prettyAmount(item.amount)}{item.amount !== null ? ` ${item.unit}` : ''}</strong> {item.name}{item.note && <em> — {item.note}</em>}</span></label>
+          <label className={`ink-check${done ? ' struck' : ''}`}><input type="checkbox" checked={done} onChange={() => setGathered(g => done ? g.filter(x => x !== item.id) : [...g, item.id])}/><InkBox/><span className="ink-text"><strong>{prettyAmount(item.amount)}{item.amount !== null ? ` ${amountUnit(item.unit, item.amount)}` : ''}</strong> {item.name}{item.note && <em> — {item.note}</em>}</span></label>
         </motion.li> })}</ul>
       </motion.aside>
     </>}</AnimatePresence>

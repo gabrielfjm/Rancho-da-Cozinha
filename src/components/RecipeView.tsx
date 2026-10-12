@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowLeft, BookOpen, ChefHat, Clock3, Heart, ListPlus, Pencil, Plus, Printer, Share2, Star, Trash2 } from 'lucide-react'
 import type { CookLog, Recipe, RecipeIngredient } from '../types'
-import { gramsFor, prettyAmount, uid } from '../lib/format'
+import { amountUnit, gramsFor, prettyAmount, uid } from '../lib/format'
 import { calculateNutrition } from '../lib/nutrition'
 import { ink, paper, stamp } from '../lib/motion'
 import { ranchReviews, scoreLabel } from '../data/ranchReviews'
@@ -19,7 +19,7 @@ function measure(item: RecipeIngredient, factor: number, metric: boolean) {
     const grams = gramsFor(item.amount * factor, item.unit, item.gramsPerUnit)
     if (grams !== null) return `${prettyAmount(grams)} ${item.unit === 'ml' || item.unit === 'l' ? 'ml' : 'g'}`
   }
-  return `${prettyAmount(item.amount * factor)} ${item.unit}`
+  return `${prettyAmount(item.amount * factor)} ${amountUnit(item.unit, item.amount * factor)}`
 }
 
 function FavoriteButton({ on, onToggle }: { on: boolean; onToggle: () => Promise<unknown> }) {
@@ -37,7 +37,7 @@ export function RecipeView({ recipe, logs, catalog = false, backLabel, onBack, o
   onKitchen: () => void; onShopping: () => Promise<boolean>; onLog: (log: CookLog) => Promise<boolean>
 }) {
   const [servings, setServings] = useState(recipe.servings)
-  const [metric, setMetric] = useState(false)
+  const [metric, setMetric] = useState(recipe.source === 'TheMealDB')
   const [checked, setChecked] = useState<string[]>([])
   const [tab, setTab] = useState<'ingredients' | 'steps'>('ingredients')
   const [note, setNote] = useState('')

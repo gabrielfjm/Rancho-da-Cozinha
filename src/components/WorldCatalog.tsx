@@ -24,7 +24,7 @@ export function WorldCatalog({ recipes, loading, error, onOpen, onRetry }: {
 
   return <main className="page world-catalog-page">
     <div className="page-heading"><div><span className="eyebrow">Acervo do Rancho</span><h1>Explore as receitas</h1><p>Busque por prato ou ingrediente e encontre ideias de várias cozinhas do mundo.</p></div></div>
-    <section className="world-catalog-intro"><BookOpen size={21}/><p>As receitas internacionais vêm do <a href="https://www.themealdb.com/" target="_blank" rel="noreferrer">TheMealDB</a>, com ingredientes e preparo em inglês. As fichas brasileiras do Rancho estão em português.</p></section>
+    <section className="world-catalog-intro"><BookOpen size={21}/><p>As receitas internacionais vêm do <a href="https://www.themealdb.com/" target="_blank" rel="noreferrer">TheMealDB</a> e foram traduzidas automaticamente para português brasileiro. Confira medidas e preparo antes de cozinhar.</p></section>
     <section className="world-catalog-filters" aria-label="Buscar no acervo">
       <label className="search-box"><Search size={19}/><input value={query} onChange={event => { setQuery(event.target.value); setPage(1) }} placeholder="Nome ou ingrediente" aria-label="Buscar por nome ou ingrediente"/>{query && <button type="button" className="search-clear" onClick={() => { setQuery(''); setPage(1) }} aria-label="Limpar busca"><X size={16}/></button>}</label>
       <label>Tipo de prato<select value={category} onChange={event => { setCategory(event.target.value); setPage(1) }}><option>Todas</option>{categories.map(value => <option key={value}>{value}</option>)}</select></label>
